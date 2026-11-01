@@ -65,3 +65,16 @@ After changing a rule, run `./gradlew --stop` in the consuming project before re
 ```shell
 ./gradlew test
 ```
+
+### Adding a rule
+
+1. Write the rule in `src/main/kotlin/io/github/leeturner/arrowdetekt/`, extending `Rule` and implementing `RequiresAnalysisApi`. Arrow rules need type resolution, so they run in `detektMain` / `detektTest` only.
+2. Register it in `ArrowRuleSetProvider.instance()`.
+3. Add it to `src/main/resources/config/config.yml`: `active: true` for rules that catch bugs, `active: false` for style (idiom) rules. detekt merges this file into its defaults.
+4. Update `ArrowRuleSetProviderTest`, which pins the exact rule list and the default config.
+5. Test it the way `NoCatchAllInRaiseScopeTest` does: `lintWithContext(createEnvironment(), PRELUDE + snippet)`. The test task sets `compile-test-snippets=true`, so every snippet must compile; otherwise unresolved Arrow calls make "not flagged" tests pass for the wrong reason. Arrow and kotlinx-coroutines are on the test classpath. Cover at least one flagged and one unflagged case, plus any false positives found in real code.
+6. Make the message say what to write instead, as stock detekt style rules do.
+
+To tell whether a call raises into a Raise scope, check the callee's declared receiver type, not the type of the value passed: inside `either { }`, the generic `T.runCatching` receives the Raise but doesn't raise. `raisesOutside` in `NoCatchAllInRaiseScope.kt` does this; move it to a shared file once a second rule needs it.
+
+The detekt 2 docs have no complete type-resolution rule example, so `NoCatchAllInRaiseScope` is the working reference. See also detekt's [type resolution docs](https://detekt.dev/docs/gettingstarted/type-resolution) and [`RequiresAnalysisApi`](https://detekt.dev/kdoc/detekt-api/dev.detekt.api/-requires-analysis-api/index.html).
