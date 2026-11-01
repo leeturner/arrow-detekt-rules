@@ -12,4 +12,12 @@ class ArrowRuleSetProviderTest {
 
         assertEquals(listOf("NoCatchAllInRaiseScope"), provider.instance().rules.keys.map { it.value })
     }
+
+    // detekt-core merges every plugin's config/config.yml into its defaults; without it the rule is off
+    @Test
+    fun defaultConfigActivatesTheRule() {
+        val yml = javaClass.classLoader.getResource("config/config.yml")?.readText()
+
+        assertEquals("arrow:\n  NoCatchAllInRaiseScope:\n    active: true\n", yml)
+    }
 }

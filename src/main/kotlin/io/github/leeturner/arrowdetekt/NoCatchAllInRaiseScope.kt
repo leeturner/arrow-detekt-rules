@@ -17,12 +17,17 @@ import org.jetbrains.kotlin.analysis.api.resolution.successfulFunctionCallOrNull
 import org.jetbrains.kotlin.analysis.api.resolution.symbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaReceiverParameterSymbol
 import org.jetbrains.kotlin.name.ClassId
+import org.jetbrains.kotlin.psi.KtBlockExpression
 import org.jetbrains.kotlin.psi.KtCallExpression
 import org.jetbrains.kotlin.psi.KtCatchClause
 import org.jetbrains.kotlin.psi.KtDotQualifiedExpression
 import org.jetbrains.kotlin.psi.KtElement
+import org.jetbrains.kotlin.psi.KtExpression
+import org.jetbrains.kotlin.psi.KtIfExpression
+import org.jetbrains.kotlin.psi.KtIsExpression
 import org.jetbrains.kotlin.psi.KtThrowExpression
 import org.jetbrains.kotlin.psi.KtTryExpression
+import org.jetbrains.kotlin.psi.KtTypeReference
 import org.jetbrains.kotlin.psi.psiUtil.collectDescendantsOfType
 
 /**
@@ -59,20 +64,36 @@ class NoCatchAllInRaiseScope(config: Config) :
             }
     }
 
-    private fun swallowsRaise(clause: KtCatchClause): Boolean {
-        val typeReference = clause.catchParameter?.typeReference ?: return false
-        return analyze(typeReference) {
-            buildClassType(RAISE_CANCELLATION).isSubtypeOf(typeReference.type)
-        }
-    }
+    private fun swallowsRaise(clause: KtCatchClause): Boolean =
+        clause.catchParameter?.typeReference?.let(::coversRaise) ?: false
 
+    // True when a value of [typeReference]'s type could be a RaiseCancellationException
+    private fun coversRaise(typeReference: KtTypeReference): Boolean =
+        analyze(typeReference) { buildClassType(RAISE_CANCELLATION).isSubtypeOf(typeReference.type) }
+
+    // Only rethrows that always run for the raise count: a direct statement of the catch block, or one
+    // guarded by `if (e is T)` where T covers the raise. A throw in some other branch or a lambda doesn't.
     private fun rethrows(clause: KtCatchClause): Boolean {
         val name = clause.catchParameter?.name ?: return false
-        val body = clause.catchBody ?: return false
-        return body.collectDescendantsOfType<KtThrowExpression>().any { it.thrownExpression?.text == name } ||
-            body.collectDescendantsOfType<KtDotQualifiedExpression>().any {
-                it.receiverExpression.text == name && it.selectorExpression?.text == "nonFatalOrThrow()"
-            }
+        val statements = (clause.catchBody as? KtBlockExpression)?.statements ?: return false
+        return statements.any { rethrowsDirectly(it, name) || rethrowsWhenRaise(it, name) }
+    }
+
+    private fun rethrowsDirectly(statement: KtExpression?, name: String): Boolean = when (statement) {
+        is KtThrowExpression -> statement.thrownExpression?.text == name
+        is KtDotQualifiedExpression ->
+            statement.receiverExpression.text == name && statement.selectorExpression?.text == "nonFatalOrThrow()"
+        is KtBlockExpression -> statement.statements.singleOrNull().let { rethrowsDirectly(it, name) }
+        else -> false
+    }
+
+    private fun rethrowsWhenRaise(statement: KtExpression, name: String): Boolean {
+        val condition = (statement as? KtIfExpression)?.condition as? KtIsExpression ?: return false
+        val type = condition.typeReference ?: return false
+        return !condition.isNegated &&
+            condition.leftHandSide.text == name &&
+            rethrowsDirectly(statement.then, name) &&
+            coversRaise(type)
     }
 
     private companion object {
@@ -84,7 +105,7 @@ class NoCatchAllInRaiseScope(config: Config) :
 
         const val RUN_CATCHING_MESSAGE =
             "runCatching catches Arrow's RaiseCancellationException, so the raise never reaches its Raise scope. " +
-                "Use Either.catch, or rethrow with nonFatalOrThrow()."
+                "Use Either.catch instead."
     }
 }
 

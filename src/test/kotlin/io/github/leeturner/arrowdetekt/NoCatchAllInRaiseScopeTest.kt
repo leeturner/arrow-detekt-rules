@@ -6,6 +6,7 @@ import dev.detekt.test.lintWithContext
 import dev.detekt.test.utils.createEnvironment
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 class NoCatchAllInRaiseScopeTest {
     private val env = createEnvironment()
@@ -137,6 +138,36 @@ class NoCatchAllInRaiseScopeTest {
         )
 
         assertEquals(1, findings.size)
+    }
+
+    @Test
+    fun flagsRethrowGuardedByUnrelatedType() {
+        val findings = lint("fun f() = either<E, Unit> { try { raise(E) } catch (e: Exception) { if (e is IOException) throw e } }")
+
+        assertEquals(1, findings.size)
+    }
+
+    @Test
+    fun flagsThrowThatOnlyRunsInsideALambda() {
+        val findings = lint("fun f() = either<E, Unit> { try { raise(E) } catch (e: Exception) { val t = { throw e } } }")
+
+        assertEquals(1, findings.size)
+    }
+
+    @Test
+    fun ignoresRethrowGuardedByCancellation() {
+        val findings = lint(
+            "fun f() = either<E, Unit> { try { raise(E) } catch (e: Exception) { if (e is CancellationException) throw e } }",
+        )
+
+        assertEquals(0, findings.size)
+    }
+
+    @Test
+    fun runCatchingMessageDoesNotSuggestNonFatalOrThrow() {
+        val findings = lint("fun f() = either<E, String?> { runCatching { findUser(1).bind() }.getOrNull() }")
+
+        assertFalse("nonFatalOrThrow" in findings.single().message)
     }
 
     private companion object {

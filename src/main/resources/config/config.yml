@@ -1,0 +1,3 @@
+arrow:
+  NoCatchAllInRaiseScope:
+    active: true

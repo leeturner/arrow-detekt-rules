@@ -22,7 +22,7 @@ either {
 }
 ```
 
-Not flagged: narrow catches (`IOException`), catches that rethrow (`throw e`, `e.nonFatalOrThrow()`), and Raise scopes opened inside the catch-all.
+Not flagged: narrow catches (`IOException`), catches that always rethrow the raise (`throw e`, `e.nonFatalOrThrow()`, `if (e is CancellationException) throw e`), and Raise scopes opened inside the catch-all.
 
 The rule needs type resolution, so it runs in `detektMain` / `detektTest`, not plain `detekt`.
 
@@ -36,12 +36,12 @@ dependencies {
 }
 ```
 
-In its detekt config:
+The rule is active by default (the jar ships `config/config.yml`). To turn it off, add this to the project's detekt config:
 
 ```yaml
 arrow:
   NoCatchAllInRaiseScope:
-    active: true
+    active: false
 ```
 
 Then point Gradle at this checkout, which builds it and swaps it in for the dependency:
