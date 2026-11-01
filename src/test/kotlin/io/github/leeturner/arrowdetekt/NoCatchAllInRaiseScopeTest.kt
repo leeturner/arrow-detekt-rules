@@ -116,6 +116,29 @@ class NoCatchAllInRaiseScopeTest {
         assertEquals(0, findings.size)
     }
 
+    @Test
+    fun ignoresEitherOpenedInsideTry() {
+        val findings = lint("fun f() = try { either<E, Unit> { raise(E) } } catch (e: Exception) { null }")
+
+        assertEquals(0, findings.size)
+    }
+
+    @Test
+    fun ignoresRecoverOpenedInsideRunCatching() {
+        val findings = lint("fun f() = runCatching { recover<E, Int>({ raise(E) }) { 0 } }")
+
+        assertEquals(0, findings.size)
+    }
+
+    @Test
+    fun flagsOuterScopeRaiseNextToInnerScope() {
+        val findings = lint(
+            "fun f() = either<E, Unit> { try { either<E, Unit> { raise(E) }; raise(E) } catch (e: Exception) { } }",
+        )
+
+        assertEquals(1, findings.size)
+    }
+
     private companion object {
         val PRELUDE =
             """
