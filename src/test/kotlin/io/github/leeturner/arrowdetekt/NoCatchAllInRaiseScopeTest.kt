@@ -283,6 +283,79 @@ class NoCatchAllInRaiseScopeTest {
         assertEquals(0, findings.size)
     }
 
+    // Second review
+    @Test
+    fun flagsRaiseInNonInlineLambdaThatRunsNow() {
+        val findings = lint("fun f() = either<E, Unit> { try { runNow { raise(E) } } catch (e: Exception) { } }")
+
+        assertEquals(1, findings.size)
+    }
+
+    @Test
+    fun flagsRaiseInsideWithContext() {
+        val findings = lint(
+            "suspend fun f() = either<E, Unit> { try { withContext(Dispatchers.IO) { raise(E) } } catch (e: Exception) { } }",
+        )
+
+        assertEquals(1, findings.size)
+    }
+
+    @Test
+    fun ignoresRaiseInsideFlowBuilder() {
+        val findings = lint("fun f() = either<E, Unit> { try { val fl = flow<Int> { raise(E) } } catch (e: Exception) { } }")
+
+        assertEquals(0, findings.size)
+    }
+
+    @Test
+    fun ignoresRaiseInLazyInitializer() {
+        val findings = lint("fun f() = either<E, Unit> { try { val l = lazy { raise(E) } } catch (e: Exception) { } }")
+
+        assertEquals(0, findings.size)
+    }
+
+    @Test
+    fun flagsInvokingRaiseBlockParameter() {
+        val findings = lint("fun Raise<E>.safely(block: Raise<E>.() -> Unit) { try { block() } catch (e: Exception) { } }")
+
+        assertEquals(1, findings.size)
+    }
+
+    @Test
+    fun reportsOuterCatchWhenRunCatchingResultIsRethrown() {
+        val findings = lint(
+            "fun f() = either<E, Unit> { try { runCatching { raise(E) }.getOrThrow() } catch (e: Exception) { } }",
+        )
+
+        assertEquals(1, findings.size)
+        assertTrue(findings.single().message.startsWith("Catching"))
+    }
+
+    @Test
+    fun flagsBindInAnonymousFunctionPassedToInline() {
+        val findings = lint(
+            "fun f() = either<E, Unit> { try { listOf(1).forEach(fun(i: Int) { findUser(i).bind() }) } catch (e: Exception) { } }",
+        )
+
+        assertEquals(1, findings.size)
+    }
+
+    @Test
+    fun ignoresWhenGuardedRethrow() {
+        val findings = lint(
+            "fun f() = either<E, Unit> { try { raise(E) } catch (e: Exception) { when (e) { is CancellationException -> throw e; else -> {} } } }",
+        )
+
+        assertEquals(0, findings.size)
+    }
+
+    @Test
+    fun flagsSafeCallRunOnNullableRaise() {
+        val findings = lint("fun g(r: Raise<E>?) { try { r?.run { raise(E) } } catch (e: Exception) { } }")
+
+        assertEquals(1, findings.size)
+    }
+
     // Behaviour that already worked, locked in
     @Test
     fun flagsWrappingRethrow() {
@@ -323,11 +396,15 @@ class NoCatchAllInRaiseScopeTest {
             import arrow.core.raise.context.raise as raiseInContext
             import arrow.core.nonFatalOrThrow
             import java.io.IOException
+            import kotlinx.coroutines.Dispatchers
+            import kotlinx.coroutines.flow.flow
+            import kotlinx.coroutines.withContext
             import kotlin.coroutines.cancellation.CancellationException
 
             object E
             fun findUser(id: Int): Either<E, String> = Either.Right("u")
             fun plainCall(): Int = 1
+            fun <T> runNow(block: () -> T): T = block()
             """.trimIndent() + "\n"
     }
 }

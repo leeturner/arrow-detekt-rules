@@ -28,6 +28,7 @@ import org.jetbrains.kotlin.psi.KtCatchClause
 import org.jetbrains.kotlin.psi.KtDotQualifiedExpression
 import org.jetbrains.kotlin.psi.KtElement
 import org.jetbrains.kotlin.psi.KtExpression
+import org.jetbrains.kotlin.psi.KtFunction
 import org.jetbrains.kotlin.psi.KtFunctionLiteral
 import org.jetbrains.kotlin.psi.KtIfExpression
 import org.jetbrains.kotlin.psi.KtIsExpression
@@ -35,11 +36,15 @@ import org.jetbrains.kotlin.psi.KtLambdaExpression
 import org.jetbrains.kotlin.psi.KtNameReferenceExpression
 import org.jetbrains.kotlin.psi.KtNamedFunction
 import org.jetbrains.kotlin.psi.KtPsiUtil
+import org.jetbrains.kotlin.psi.KtQualifiedExpression
 import org.jetbrains.kotlin.psi.KtThisExpression
 import org.jetbrains.kotlin.psi.KtThrowExpression
 import org.jetbrains.kotlin.psi.KtTryExpression
 import org.jetbrains.kotlin.psi.KtTypeReference
 import org.jetbrains.kotlin.psi.KtValueArgument
+import org.jetbrains.kotlin.psi.KtWhenConditionIsPattern
+import org.jetbrains.kotlin.psi.KtWhenConditionWithExpression
+import org.jetbrains.kotlin.psi.KtWhenExpression
 import org.jetbrains.kotlin.psi.psiUtil.collectDescendantsOfType
 import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
 
@@ -59,7 +64,7 @@ class NoCatchAllInRaiseScope(config: Config) :
 
     override fun visitCallExpression(expression: KtCallExpression) {
         super.visitCallExpression(expression)
-        val body = runCatchingBody(expression) ?: return
+        val body = swallowingRunCatchingBody(expression) ?: return
         if (containsEscapingRaiseCall(body)) {
             report(Finding(Entity.from(expression), RUN_CATCHING_MESSAGE))
         }
@@ -100,6 +105,14 @@ private fun runCatchingBody(call: KtCallExpression): KtExpression? {
     }
     if (!isRunCatching) return null
     return call.valueArguments.firstNotNullOfOrNull { (it.getArgumentExpression() as? KtLambdaExpression)?.bodyExpression }
+}
+
+/** Like [runCatchingBody], but null when the result goes straight to `getOrThrow()`, which rethrows. */
+private fun swallowingRunCatchingBody(call: KtCallExpression): KtExpression? {
+    val whole = (call.parent as? KtQualifiedExpression)?.takeIf { it.selectorExpression == call } ?: call
+    val next = whole.parent as? KtQualifiedExpression
+    if (next?.receiverExpression == whole && next.selectorExpression?.text == "getOrThrow()") return null
+    return runCatchingBody(call)
 }
 
 /** Catch clauses of [expression] that would swallow a raise. */
@@ -143,13 +156,25 @@ private fun rethrowsThroughSelector(expression: KtDotQualifiedExpression): Boole
     return block.statements.any { rethrowsDirectly(it, alias) }
 }
 
-private fun rethrowsWhenRaise(statement: KtExpression, name: String): Boolean {
-    val condition = (statement as? KtIfExpression)?.condition as? KtIsExpression ?: return false
-    val type = condition.typeReference ?: return false
-    return !condition.isNegated &&
-        condition.leftHandSide.text == name &&
-        rethrowsDirectly(statement.then, name) &&
-        coversRaise(type)
+// `if (e is T) throw e`, `when (e) { is T -> throw e }` or `when { e is T -> throw e }`, with T covering the raise
+private fun rethrowsWhenRaise(statement: KtExpression, name: String): Boolean = when (statement) {
+    is KtIfExpression -> isRaiseCheck(statement.condition, name) && rethrowsDirectly(statement.then, name)
+    is KtWhenExpression -> statement.entries.any { entry ->
+        rethrowsDirectly(entry.expression, name) && entry.conditions.any { condition ->
+            when (condition) {
+                is KtWhenConditionIsPattern -> statement.subjectExpression?.text == name && !condition.isNegated &&
+                    condition.typeReference?.let(::coversRaise) == true
+                is KtWhenConditionWithExpression -> isRaiseCheck(condition.expression, name)
+                else -> false
+            }
+        }
+    }
+    else -> false
+}
+
+private fun isRaiseCheck(condition: KtExpression?, name: String): Boolean {
+    val check = condition as? KtIsExpression ?: return false
+    return !check.isNegated && check.leftHandSide.text == name && check.typeReference?.let(::coversRaise) == true
 }
 
 // ---- Raising calls ---------------------------------------------------------------------------
@@ -164,37 +189,46 @@ internal fun containsEscapingRaiseCall(body: KtElement): Boolean =
         between.all(::runsInPlace) && between.none(::isInnerCatchAllBody) && raisesOutside(call, body)
     }
 
-// A local function, a stored lambda or a lambda passed to a non-inline parameter runs later, not here.
+// Local functions and stored lambdas run later. A lambda or anonymous function passed as an argument
+// is assumed to run during the call (inline functions, withContext, transaction, ...).
 private fun runsInPlace(element: PsiElement): Boolean = when (element) {
-    is KtNamedFunction -> false
-    is KtFunctionLiteral -> isInlinedLambda(element)
+    is KtFunctionLiteral -> argumentRunsInPlace(element)
+    is KtNamedFunction -> element.nameIdentifier == null && argumentRunsInPlace(element)
     else -> true
 }
 
-/** The call [literal] is passed to, with the argument expression holding it; null when it isn't an argument. */
-private fun argumentOf(literal: KtFunctionLiteral): Pair<KtCallExpression, KtExpression>? {
-    val lambda = literal.parent as? KtLambdaExpression ?: return null
-    val argument = lambda.getStrictParentOfType<KtValueArgument>() ?: return null
+/** The call [function] is passed to, with the argument expression holding it; null when it isn't an argument. */
+private fun argumentOf(function: KtFunction): Pair<KtCallExpression, KtExpression>? {
+    val value = if (function is KtFunctionLiteral) function.parent as? KtLambdaExpression ?: return null else function
+    val argument = value.getStrictParentOfType<KtValueArgument>() ?: return null
     val expression = argument.getArgumentExpression() ?: return null
-    if (KtPsiUtil.safeDeparenthesize(expression) != lambda) return null
+    if (KtPsiUtil.safeDeparenthesize(expression) != value) return null
     val call = argument.getStrictParentOfType<KtCallExpression>() ?: return null
     return call to expression
 }
 
-private fun isInlinedLambda(literal: KtFunctionLiteral): Boolean {
-    val (call, expression) = argumentOf(literal) ?: return false
+// ponytail: guesses from the result type; a non-inline helper that stores the lambda and returns
+// something else (a callback registry, a Thread) is treated as running it now
+private fun argumentRunsInPlace(function: KtFunction): Boolean {
+    val (call, expression) = argumentOf(function) ?: return false
     return analyze(call) {
-        val resolved = call.resolveToCall()?.successfulFunctionCallOrNull() ?: return@analyze false
-        val parameter = resolved.valueArgumentMapping[expression]?.symbol ?: return@analyze false
-        (resolved.symbol as? KaNamedFunctionSymbol)?.isInline == true && !parameter.isNoinline
+        val resolved = call.resolveToCall()?.successfulFunctionCallOrNull() ?: return@analyze true
+        val parameter = resolved.valueArgumentMapping[expression]?.symbol
+        val inlined = (resolved.symbol as? KaNamedFunctionSymbol)?.isInline == true && parameter?.isNoinline == false
+        inlined || LAZY_RESULTS.none { resolved.signature.returnType.isSubtypeOf(it) }
     }
 }
+
+// Results that hold on to the lambda and run it later: `asSequence().map { }`, `flow { }`, `lazy { }`
+private val LAZY_RESULTS = listOf("kotlin/sequences/Sequence", "kotlinx/coroutines/flow/Flow", "kotlin/Lazy", "kotlin/Function")
+    .map(ClassId::fromString)
 
 private fun isInnerCatchAllBody(element: PsiElement): Boolean {
     val parent = element.parent
     return when {
         parent is KtTryExpression && parent.tryBlock == element -> swallowingClauses(parent).isNotEmpty()
-        parent is KtFunctionLiteral -> argumentOf(parent)?.let { (call, _) -> runCatchingBody(call) == element } ?: false
+        parent is KtFunctionLiteral ->
+            argumentOf(parent)?.let { (call, _) -> swallowingRunCatchingBody(call) == element } ?: false
         else -> false
     }
 }
@@ -206,7 +240,7 @@ private fun raisesOutside(call: KtCallExpression, body: KtElement): Boolean = an
     val resolved = call.resolveToCall()?.successfulFunctionCallOrNull() ?: return@analyze false
     val symbol = resolved.symbol
     val extension = resolved.extensionReceiver
-        ?.takeIf { symbol.receiverParameter?.returnType?.isSubtypeOf(RAISE) == true }
+        ?.takeIf { (symbol.receiverParameter?.returnType ?: it.type).isSubtypeOf(RAISE) }
     val context = resolved.contextArguments.zip(symbol.contextParameters)
         .filter { (_, parameter) -> parameter.returnType.isSubtypeOf(RAISE) }
         .map { (argument, _) -> argument }
@@ -241,13 +275,13 @@ private fun KaSession.declaredInside(symbol: KaSymbol, body: KtElement): Boolean
 }
 
 // A lambda opens its own Raise scope (`either { }`, `recover { }`) unless the call it is passed to
-// hands it an existing Raise, as `with(r) { }` does. Then the Raise comes from wherever `r` does.
+// hands it an existing Raise: as a receiver (`r.run { }`, `T.runCatching { }` inside a Raise scope)
+// or an argument (`with(r) { }`). Then the Raise comes from wherever that one does.
 private fun KaSession.opensFreshRaise(literal: KtFunctionLiteral, body: KtElement): Boolean {
     val (call, _) = argumentOf(literal) ?: return true
-    val receiver = (call.parent as? KtDotQualifiedExpression)?.takeIf { it.selectorExpression == call }?.receiverExpression
-    val inputs = call.valueArguments.mapNotNull { it.getArgumentExpression() }.filter { it !is KtLambdaExpression } +
-        listOfNotNull(receiver)
-    return inputs
-        .filter { it.expressionType?.isSubtypeOf(RAISE) == true }
-        .all { expressionProvidedInside(it, body) }
+    val resolved = call.resolveToCall()?.successfulFunctionCallOrNull() ?: return true
+    val receivers = listOfNotNull(resolved.dispatchReceiver, resolved.extensionReceiver).filter { it.type.isSubtypeOf(RAISE) }
+    val arguments = call.valueArguments.mapNotNull { it.getArgumentExpression() }
+        .filter { it !is KtLambdaExpression && it.expressionType?.isSubtypeOf(RAISE) == true }
+    return receivers.all { providedInside(it, body) } && arguments.all { expressionProvidedInside(it, body) }
 }

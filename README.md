@@ -22,7 +22,13 @@ either {
 }
 ```
 
-Not flagged: narrow catches (`IOException`), catches that always rethrow the raise (`throw e`, `e.nonFatalOrThrow()`, `if (e is CancellationException) throw e`), Raise scopes opened inside the catch-all, and raises in code that runs later rather than inside the `try` (local functions, stored lambdas, lambdas passed to non-inline functions such as `Sequence.map`). When catch-alls nest, only the innermost one is reported.
+Not flagged: narrow catches (`IOException`), catches that always rethrow the raise (`throw e`, `e.nonFatalOrThrow()`, `if (e is CancellationException) throw e`), `runCatching { ... }.getOrThrow()`, Raise scopes opened inside the catch-all, and raises in code that runs later rather than inside the `try`. When catch-alls nest, only the innermost one is reported.
+
+What counts as running later is a guess:
+
+- A lambda passed as an argument is assumed to run during the call (`forEach`, `withContext`, `coroutineScope`, `transaction`), unless the call returns something that holds on to it: a `Sequence`, `Flow`, `Lazy` or function. So `asSequence().map { it.bind() }` and `lazy { raise(e) }` are not flagged.
+- Local functions and lambdas stored in a `val` are treated as running later, even when they are called straight away inside the `try` (`val t = { raise(e) }; t()`).
+- A non-inline helper that stores its lambda and returns something else is treated as running it now, so a raise inside it is flagged.
 
 The rule needs type resolution, so it runs in `detektMain` / `detektTest`, not plain `detekt`.
 
