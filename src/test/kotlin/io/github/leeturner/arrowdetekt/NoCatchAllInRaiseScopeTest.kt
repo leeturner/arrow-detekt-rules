@@ -41,6 +41,81 @@ class NoCatchAllInRaiseScopeTest {
         assertEquals(0, findings.size)
     }
 
+    @Test
+    fun flagsCatchException() {
+        val findings = lint("fun f() = either<E, Unit> { try { raise(E) } catch (e: Exception) { } }")
+
+        assertEquals(1, findings.size)
+    }
+
+    @Test
+    fun flagsCatchThrowable() {
+        val findings = lint("fun f() = either<E, Unit> { try { raise(E) } catch (e: Throwable) { } }")
+
+        assertEquals(1, findings.size)
+    }
+
+    @Test
+    fun flagsCatchCancellationException() {
+        val findings = lint("fun f() = either<E, Unit> { try { raise(E) } catch (e: CancellationException) { } }")
+
+        assertEquals(1, findings.size)
+    }
+
+    @Test
+    fun flagsInRaiseExtensionFunction() {
+        val findings = lint("fun Raise<E>.load(x: Boolean) { try { ensure(x) { E } } catch (e: Exception) { } }")
+
+        assertEquals(1, findings.size)
+    }
+
+    @Test
+    fun flagsBindInsideInlineLambda() {
+        val findings = lint(
+            "fun f() = either<E, Unit> { try { listOf(1, 2).forEach { findUser(it).bind() } } catch (e: Exception) { } }",
+        )
+
+        assertEquals(1, findings.size)
+    }
+
+    @Test
+    fun flagsCatchThatLogsButDoesNotRethrow() {
+        val findings = lint("fun f() = either<E, Unit> { try { raise(E) } catch (e: Exception) { println(e) } }")
+
+        assertEquals(1, findings.size)
+    }
+
+    @Test
+    fun flagsOnlyTheBroadClause() {
+        val code = "fun f() = either<E, Unit> {\ntry { raise(E) }\ncatch (e: IOException) { }\ncatch (e: Exception) { }\n}"
+
+        val findings = lint(code)
+
+        assertEquals(1, findings.size)
+        assertEquals(PRELUDE.lines().size + 3, findings.single().entity.location.source.line)
+    }
+
+    @Test
+    fun ignoresNarrowCatch() {
+        val findings = lint("fun f() = either<E, Unit> { try { raise(E) } catch (e: IOException) { } }")
+
+        assertEquals(0, findings.size)
+    }
+
+    @Test
+    fun ignoresRethrow() {
+        val findings = lint("fun f() = either<E, Unit> { try { raise(E) } catch (e: Exception) { throw e } }")
+
+        assertEquals(0, findings.size)
+    }
+
+    @Test
+    fun ignoresNonFatalOrThrow() {
+        val findings = lint("fun f() = either<E, Unit> { try { raise(E) } catch (e: Exception) { e.nonFatalOrThrow() } }")
+
+        assertEquals(0, findings.size)
+    }
+
     private companion object {
         val PRELUDE =
             """

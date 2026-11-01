@@ -18,7 +18,11 @@ import org.jetbrains.kotlin.analysis.api.resolution.symbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaReceiverParameterSymbol
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.psi.KtCallExpression
+import org.jetbrains.kotlin.psi.KtCatchClause
+import org.jetbrains.kotlin.psi.KtDotQualifiedExpression
 import org.jetbrains.kotlin.psi.KtElement
+import org.jetbrains.kotlin.psi.KtThrowExpression
+import org.jetbrains.kotlin.psi.KtTryExpression
 import org.jetbrains.kotlin.psi.psiUtil.collectDescendantsOfType
 
 /**
@@ -44,7 +48,40 @@ class NoCatchAllInRaiseScope(config: Config) :
         }
     }
 
+    override fun visitTryExpression(expression: KtTryExpression) {
+        super.visitTryExpression(expression)
+        if (!containsEscapingRaiseCall(expression.tryBlock)) return
+        expression.catchClauses
+            .filter { swallowsRaise(it) && !rethrows(it) }
+            .forEach { clause ->
+                val type = clause.catchParameter?.typeReference?.text
+                report(Finding(Entity.from(clause), catchMessage(type)))
+            }
+    }
+
+    private fun swallowsRaise(clause: KtCatchClause): Boolean {
+        val typeReference = clause.catchParameter?.typeReference ?: return false
+        return analyze(typeReference) {
+            buildClassType(RAISE_CANCELLATION).isSubtypeOf(typeReference.type)
+        }
+    }
+
+    private fun rethrows(clause: KtCatchClause): Boolean {
+        val name = clause.catchParameter?.name ?: return false
+        val body = clause.catchBody ?: return false
+        return body.collectDescendantsOfType<KtThrowExpression>().any { it.thrownExpression?.text == name } ||
+            body.collectDescendantsOfType<KtDotQualifiedExpression>().any {
+                it.receiverExpression.text == name && it.selectorExpression?.text == "nonFatalOrThrow()"
+            }
+    }
+
     private companion object {
+        val RAISE_CANCELLATION = ClassId.fromString("arrow/core/raise/RaiseCancellationException")
+
+        fun catchMessage(type: String?) =
+            "Catching $type here swallows Arrow's RaiseCancellationException, so the raise never reaches its " +
+                "Raise scope. Catch a narrower type, use Either.catch, or rethrow with nonFatalOrThrow()."
+
         const val RUN_CATCHING_MESSAGE =
             "runCatching catches Arrow's RaiseCancellationException, so the raise never reaches its Raise scope. " +
                 "Use Either.catch, or rethrow with nonFatalOrThrow()."
