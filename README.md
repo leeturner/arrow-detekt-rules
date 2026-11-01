@@ -22,7 +22,7 @@ either {
 }
 ```
 
-Not flagged: narrow catches (`IOException`), catches that always rethrow the raise (`throw e`, `e.nonFatalOrThrow()`, `if (e is CancellationException) throw e`), and Raise scopes opened inside the catch-all.
+Not flagged: narrow catches (`IOException`), catches that always rethrow the raise (`throw e`, `e.nonFatalOrThrow()`, `if (e is CancellationException) throw e`), Raise scopes opened inside the catch-all, and raises in code that runs later rather than inside the `try` (local functions, stored lambdas, lambdas passed to non-inline functions such as `Sequence.map`). When catch-alls nest, only the innermost one is reported.
 
 The rule needs type resolution, so it runs in `detektMain` / `detektTest`, not plain `detekt`.
 
@@ -51,6 +51,8 @@ Then point Gradle at this checkout, which builds it and swaps it in for the depe
 ```
 
 Without `--include-build` the dependency won't resolve, so keep that line out of the consumer's committed build until there is a release.
+
+After changing a rule, run `./gradlew --stop` in the consuming project before re-running detekt. Its Gradle daemon keeps the plugin classes it loaded first, so it otherwise runs the old rule (and the old default config) even though the jar was rebuilt.
 
 ## Development
 
