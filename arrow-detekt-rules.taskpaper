@@ -18,17 +18,22 @@ NoCatchAllInRaiseScope:
 	Pick it up only if it turns up in real code.
 
 New rules:
+- Flag an Either left unbound as a statement
+	Flag an Either, Option, Ior or Effect used as a bare statement inside a Raise scope (`either { findUser(id); ... }`). A `bind()` is missing, so the error is silently dropped. `NoNestedEither` only catches a missing bind when the result is stored or returned.
+	From woltapp/arrow-detekt-rules (https://github.com/woltapp/arrow-detekt-rules), whose `NoEffectScopeBindableValueAsStatement` does this against the detekt 1.x API, so detekt 2 users have nothing for it. arrow-intellij's `BindInspection` (https://github.com/arrow-kt/arrow-intellij) covers other missing binds, but those are compile errors anyway; the bare statement is the only case worth a build-time check.
+	Wolt's rule checks the expression's type against a list of bindable classes (`arrow.core.Either`, `Option`, `Ior`, `arrow.core.raise.Effect`, `EagerEffect`, `kotlin.Result`), checks it is used as a statement, and reports only the last call in a chain. Build it as "Adding a rule" in README.md describes. Found in the release review on 2026-11-02; the next rule to build after the first release.
 Housekeeping:
 - Guard against projects without Arrow
 	`coversRaise` in `NoCatchAllInRaiseScope.kt` builds `arrow.core.raise.RaiseCancellationException` with `buildClassType`, and the rule checks types against `arrow.core.raise.Raise`. We haven't checked what happens in a project without Arrow on its classpath; the tests always have it. If it throws, it fails the consumer's whole detekt run, not just this rule.
 	Guard with `findClass(RAISE_CANCELLATION) ?: return false` (and the same for Raise) and add a test with Arrow off the snippet classpath. Do it before the first release.
 - Publish a release
-	Consumers use `--include-build` today, so the detektPlugins line can't be committed in their build. Publish to Maven Central (the `io.github.leeturner` namespace verifies through the GitHub account) or GitHub Packages to start.
-	Releases should track detekt's version, since a rules jar built for one detekt API may not load in another. The idea doc says to wait for detekt 2.0 final; the alternative is to pin and release per detekt version. Guard against projects without Arrow first.
+	Consumers use `--include-build` today, so the detektPlugins line can't be committed in their build. Publish to Maven Central (the `io.github.leeturner` namespace verifies through the GitHub account); the README's Usage section already points there.
+	Releases pin detekt 2.0.0-alpha.6 rather than wait for 2.0 final, which isn't out (Maven Central's latest is alpha.6 on 2026-11-02), and Wolt's Arrow rule set only supports detekt 1.x, so there's nothing for detekt 2 users meanwhile. A rules jar built for one detekt API may not load in another, so the README's Compatibility table names the detekt version each release is built for, and each new detekt version gets a new release.
+	Nothing is set up for publishing yet. `build.gradle.kts` needs the POM (name, description, url, licence, developers, scm), sources and javadoc jars, and signing; the vanniktech maven-publish Gradle plugin (`com.vanniktech.maven.publish`) does all of these and uploads to the Central Portal. The repo also needs a `LICENSE` file, since Central rejects a POM without one; Arrow uses Apache 2.0. Then add a GPG signing key and a Central Portal token as GitHub secrets, and a workflow that publishes when a release tag is pushed. Set `version` in `build.gradle.kts` to 0.1.0 for the first release.
 	Once it's out, switch encore-web-api from the `--include-build` setup to the published jar: commit the detektPlugins line in its `build.gradle.kts`.
 - Re-check against detekt 2.0 final
-	The plugin is built and tested against detekt 2.0.0-alpha.6 only. When 2.0 final ships, confirm the RuleSetProvider service file name, `RequiresAnalysisApi`, `lintWithContext` and the `compile-test-snippets` property, and bump the Kotlin Gradle plugin in `build.gradle.kts` to the Kotlin version detekt's `kotlin-compiler` dependency uses (2.4.10 for alpha.6).
-	Also check the Analysis API calls the rule depends on: `successfulFunctionCallOrNull`, `valueArgumentMapping`, `receiverParameter` and `contextArguments` (still marked experimental). They move between versions; `argumentMapping` was already deprecated in alpha.6. Do it before publishing a release.
+	The plugin is built and tested against detekt 2.0.0-alpha.6 only. When 2.0 final ships, confirm the RuleSetProvider service file name, `RequiresAnalysisApi`, `lintWithContext` and the `compile-test-snippets` property, and check the Kotlin version in `gradle/libs.versions.toml` (2.4.21, ahead of the 2.4.10 that detekt alpha.6's `kotlin-compiler` uses) still works with it.
+	Also check the Analysis API calls the rule depends on: `successfulFunctionCallOrNull`, `valueArgumentMapping`, `receiverParameter` and `contextArguments` (still marked experimental). They move between versions; `argumentMapping` was already deprecated in alpha.6. Releases pin alpha.6 (see "Publish a release"), so this no longer blocks one; do it when 2.0 final ships, then release against it and add a row to the README's Compatibility table.
 - Run the rules over real Arrow codebases
 	So far the rule has only seen probe files and its own tests. encore-web-api has no raise calls in `src/main`, so it proves the plugin loads but not that the rule is right on real code. Run it over encore and at least one other Arrow codebase and note the false positives.
 	The likeliest sources of false positives are Raise scopes hidden inside lambdas (`parMap`, `withError`, `recover`), which arrow-intellij also had to fix (https://slack-chats.kotlinlang.org/t/23059856/i-got-the-following-warning-from-intellij-gt-raise-context-m), and the guess about which lambdas run later (see the README).
@@ -36,6 +41,12 @@ Housekeeping:
 - Add CI with a Kotlin version matrix
 	`.github/workflows/build.yml` runs `./gradlew build` on JDK 25 for pushes to main and PRs. The Analysis API is tied to the Kotlin compiler, and people report detekt-test helpers failing after a Kotlin bump (https://slack-chats.kotlinlang.org/t/30300686/related-to-v2-again-i-am-getting-an-error-in-the-unit-tests-). The plugin compiles with Kotlin 2.4.10 while encore-web-api uses 2.4.21.
 	Still to add: a check that the plugin loads in a build on each Kotlin version consumers use. Do it before the first release.
+
+UseEnsure:
+- Flag if-raise with an else branch
+	`UseEnsure` and `UseEnsureNotNull` only flag an `if` with no else. arrow-intellij's `EnsureInspection` (https://github.com/arrow-kt/arrow-intellij) also flags `if (c) raise(e) else x` and `if (c) x else raise(e)`, and suggests `ensure` followed by the other branch's statements.
+	`ifRaise` in `Raise.kt` returns null as soon as there is an else, so it would need to check both branches and the message would need to say where the other branch goes. arrow-intellij skips the case where the raised error uses a variable the condition smart-casts; with Arrow 2.3 the suggested ensure still compiles (checked in the release review on 2026-11-02), so that guard may not be needed.
+	Pick it up if the pattern turns up in real code.
 
 Archive:
 - UseEnsure rule @done(2026-11-02 09:31)
