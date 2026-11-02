@@ -25,7 +25,8 @@
 2. `findUser(1).onLeft { println(it) }` returns an Either but is a deliberate side effect, so the spec says it isn't flagged. Test `ignoresOnLeftSideEffect` in Task 1.
 3. A local function inside `either { }` still sees the Raise, so the spec counts it. Test `flagsInsideLocalFunction` in Task 1.
 4. A `when` branch used as a statement is flagged the same way as an `if` branch. Covered in `flagsIfAndWhenBranches` in Task 1.
-5. A lambda stored in a `val` (`val load = { findUser(1) }`) returns its last line, so that line is used and isn't flagged. Test `ignoresLambdaResult` in Task 1.
+5. `if (c) findUser(1) else findUser(2)` as a statement gives two findings, not three: the `if` itself is unused and has type Either too. Test `reportsBranchesNotTheIfAroundThem` in Task 1.
+6. A lambda stored in a `val` (`val load = { findUser(1) }`) returns its last line, so that line is used and isn't flagged. Test `ignoresLambdaResult` in Task 1.
 
 ---
 
@@ -108,11 +109,21 @@ fun flagsIfAndWhenBranches() {
         fun Raise<E>.g(c: Boolean, n: Int) {
             if (c) findUser(1)
             if (c) { findUser(2) }
-            when (n) { 1 -> findUser(3) else -> {} }
+            when (n) {
+                1 -> findUser(3)
+                else -> {}
+            }
         }
         """.trimIndent(),
     )
     assertEquals(3, findings.size)
+}
+
+// The if itself has type Either and is unused too; only its branches are reported
+@Test
+fun reportsBranchesNotTheIfAroundThem() {
+    val findings = lint("fun Raise<E>.g(c: Boolean) { if (c) findUser(1) else findUser(2) }")
+    assertEquals(listOf("findUser(1)", "findUser(2)"), findings.map { it.message.substringAfter("from ").substringBefore(" is never") })
 }
 
 @Test
@@ -145,16 +156,20 @@ Expected: compilation fails with an unresolved reference to `NoUnboundEither`.
 
 - [ ] **Step 3: Implement `NoUnboundEither` in `NoUnboundEither.kt`**
 
-`override fun visitExpression(expression: KtExpression)`: call `super`, then only consider `expression` when its parent is a `KtBlockExpression`, `KtContainerNodeForControlStructureBody` (`if` branch without braces) or `KtWhenEntry`. Skip `KtBlockExpression` itself. Then, in one `analyze(expression)` block, return early unless all of these hold:
+`override fun visitExpression(expression: KtExpression)`: call `super`, then only consider `expression` when its parent is a `KtBlockExpression`, `KtContainerNodeForControlStructureBody` (`if` branch without braces) or `KtWhenEntry`. Skip `KtBlockExpression`, `KtIfExpression`, `KtWhenExpression` and `KtTryExpression` themselves: their branches are visited anyway and give a better message. Then, in one `analyze(expression)` block, return early unless all of these hold, checked in this order:
 
-1. `!expression.isUsedAsExpression`
-2. `bindableName(expression.expressionType)` is not null. This is a private `KaSession.bindableName(type: KaType?): String?` that returns null for `Nothing` (`isNothingType`), `"Either"`/`"Option"`/`"Ior"` when `type.isSubtypeOf(classId)`, `"Effect"` when the type is a `KaFunctionType` whose `receiverType` is a subtype of `RAISE`, and otherwise null.
+1. `bindableName(expression.expressionType)` is not null. This runs first because declarations (`KtProperty`, `KtNamedFunction`) also reach `visitExpression` with a block parent, and their null `expressionType` stops them here.
+2. `!expression.isUsedAsExpression` This is a private `KaSession.bindableName(type: KaType?): String?` that returns null for `Nothing` (`isNothingType`), `"Either"`/`"Option"`/`"Ior"` when `type.isSubtypeOf(classId)`, `"Effect"` when the type is a `KaFunctionType` whose `receiverType` is a subtype of `RAISE`, and otherwise null.
 3. The resolved call of the expression (the selector for a qualified expression) isn't a function in package `arrow.core` named `onLeft`, `onRight`, `onBoth`, `onSome` or `onNone`.
 4. `expression.containingKtFile.scopeContext(expression).implicitValues.any { it.type.isSubtypeOf(RAISE) }`
 
 Report `Finding(Entity.from(expression), message)` with the message from Global Constraints.
 
 If `flagsContextParameterFunction` fails because `implicitValues` leaves out context parameters, also accept an enclosing `KtFunction` whose symbol's `contextParameters` include a Raise type (`raiseReceivers` in `Raise.kt` shows the API).
+
+If `flagsLastLineOfUnitLambda` or `flagsInsideNestedLambda` fail because `isUsedAsExpression` is conservative about a lambda's last line, treat that line as unused when the enclosing lambda's symbol (`KaAnonymousFunctionSymbol`) has a Unit `returnType`.
+
+If `namesOptionIorAndEffect` misses the Effects because the typealias doesn't expand to a `KaFunctionType`, check `type.abbreviation?.classId` against `arrow/core/raise/Effect` and `arrow/core/raise/EagerEffect` instead.
 
 - [ ] **Step 4: Register the rule**
 
@@ -184,5 +199,7 @@ git diff arrow-detekt-rules.taskpaper              # only that item moved to Arc
 
 ```bash
 git add src README.md arrow-detekt-rules.taskpaper
-git commit --no-gpg-sign -m "Add NoUnboundEither rule"
+git commit --no-gpg-sign -m "Add NoUnboundEither rule
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
