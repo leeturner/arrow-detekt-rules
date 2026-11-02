@@ -58,22 +58,23 @@ internal class IfRaise(
  */
 internal fun ifRaise(expression: KtIfExpression): IfRaise? {
     val condition = expression.condition ?: return null
-    val then = expression.then?.let(::single) ?: return null
+    // only the raising branch has to be a single statement; the other can be any block
+    val then = expression.then?.let(::single)
     val otherwise = expression.`else`?.let(::single)
-    val thenError = raisedError(then)
-    if (otherwise == null) {
-        if (expression.`else` != null || thenError == null) return null
+    val thenError = then?.let(::raisedError)
+    if (expression.`else` == null) {
+        if (then == null || thenError == null) return null
         return IfRaise(condition, receiverOf(then), thenError, false, "if (${condition.text}) ${then.text}", "")
     }
     if (!isPlainStatement(expression)) return null
-    val elseError = raisedError(otherwise)
+    val elseError = otherwise?.let(::raisedError)
     return when {
         thenError != null && elseError != null -> null
-        thenError != null -> IfRaise(
+        then != null && thenError != null -> IfRaise(
             condition, receiverOf(then), thenError, false,
             "if (${condition.text}) ${then.text} else …", ", then the else branch,",
         )
-        elseError != null -> IfRaise(
+        otherwise != null && elseError != null -> IfRaise(
             condition, receiverOf(otherwise), elseError, true,
             "if (${condition.text}) … else ${otherwise.text}", ", then the if branch,",
         )

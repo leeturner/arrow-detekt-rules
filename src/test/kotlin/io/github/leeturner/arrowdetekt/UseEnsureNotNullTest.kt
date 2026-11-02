@@ -77,6 +77,16 @@ class UseEnsureNotNullTest {
     }
 
     @Test
+    fun flagsWhenOtherBranchHasSeveralStatements() {
+        val findings = lint(
+            "fun Raise<E>.g(x: String?) { if (x != null) { println(x); println(x) } else raise(E); " +
+                "if (x == null) raise(E) else { println(x); println(x) } }",
+        )
+
+        assertEquals(2, findings.size)
+    }
+
+    @Test
     fun flagsNullOnTheLeftWithRaiseInElse() {
         val findings = lint("fun Raise<E>.g(x: String?) { if (null != x) println(x) else raise(E) }")
 

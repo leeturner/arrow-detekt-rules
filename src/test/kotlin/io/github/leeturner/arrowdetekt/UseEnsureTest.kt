@@ -84,6 +84,16 @@ class UseEnsureTest {
     }
 
     @Test
+    fun flagsWhenOtherBranchHasSeveralStatements() {
+        val findings = lint(
+            "fun Raise<E>.g(c: Boolean) { if (c) raise(E) else { plainCall(); plainCall() }; " +
+                "if (c) { plainCall(); plainCall() } else raise(E) }",
+        )
+
+        assertEquals(2, findings.size)
+    }
+
+    @Test
     fun flagsExplicitReceiverInElse() {
         val findings = lint("fun g(r: Raise<E>, c: Boolean) { if (c) plainCall() else r.raise(E) }")
 
