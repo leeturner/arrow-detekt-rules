@@ -88,6 +88,26 @@ val user = findId(name).flatMap { findUser(it) }
 
 `Either.Right<Either<...>>` and type aliases of Either count too. Not flagged: an Either on the left (`Either<Either<E, A>, B>`), an Either inside another type (`Either<E, List<Either<E, A>>>`), and nested Eithers that are never stored in a property or returned from a function, such as a lambda's result passed straight on.
 
+### `NoUnboundEither`
+
+Flags an Either, Option, Ior or Effect used as a statement while a Raise is in scope (inside `either { }`, `option { }`, a `Raise<E>` extension or a `context(_: Raise<E>)` function). The `bind()` is missing, so its error is silently dropped.
+
+```kotlin
+// Flagged: The Either from findUser(id) is never bound, so its error is dropped. Use findUser(id).bind() instead.
+either {
+    findUser(id)
+    save(user)
+}
+
+// Fine
+either {
+    findUser(id).bind()
+    save(user)
+}
+```
+
+Statements in nested lambdas (`forEach { findUser(it) }`), local functions and `if`/`when` branches count too, and so does a statement ending in `onLeft { }`, which logs the error but still drops it. Not flagged: values that are bound, stored, returned, passed on or handled (`getOrElse`, `fold`), `kotlin.Result` (`runCatching { cleanup() }` on its own line is usually a deliberate discard), and anything outside a Raise scope. For that last case, see Kotlin's unused return value checker (`-Xreturn-value-checker`).
+
 ### `PreferEitherCatch`
 
 Flags Arrow's `catch({ ... }) { ... }` when the handler only raises, and suggests `Either.catch` with `mapLeft`, which turns the exception into an error at the edge.
@@ -170,6 +190,6 @@ After changing a rule, run `./gradlew --stop` in that project before re-running 
 5. Test it the way `NoCatchAllInRaiseScopeTest` does: `lintWithContext(createEnvironment(), PRELUDE + snippet)`, with the shared `PRELUDE` from `Prelude.kt`. The test task sets `compile-test-snippets=true`, so every snippet must compile; otherwise unresolved Arrow calls make "not flagged" tests pass for the wrong reason. Arrow and kotlinx-coroutines are on the test classpath. Cover at least one flagged and one unflagged case, plus any false positives found in real code.
 6. Make the message say what to write instead, as stock detekt style rules do.
 
-To tell whether a call raises into a Raise scope, check the callee's declared receiver type, not the type of the value passed: inside `either { }`, the generic `T.runCatching` receives the Raise but doesn't raise. `raiseReceivers` in `Raise.kt` does this, and every rule uses it. For an `if (...) raise(e)` rule, start from `ifRaise` in the same file, as `UseEnsure` and `UseEnsureNotNull` do; for any other statement that only raises, `raisedError`, as `PreferEitherCatch` does.
+To tell whether a call raises into a Raise scope, check the callee's declared receiver type, not the type of the value passed: inside `either { }`, the generic `T.runCatching` receives the Raise but doesn't raise. `raiseReceivers` in `Raise.kt` does this, and every rule that looks at raising calls uses it. To tell whether a Raise is in scope at all, as `NoUnboundEither` does, check `scopeContext(...).implicitValues` instead, which covers receivers, context parameters and nested lambdas. For an `if (...) raise(e)` rule, start from `ifRaise` in the same file, as `UseEnsure` and `UseEnsureNotNull` do; for any other statement that only raises, `raisedError`, as `PreferEitherCatch` does.
 
 The detekt 2 docs have no complete type-resolution rule example, so `NoCatchAllInRaiseScope` is the working reference. See also detekt's [type resolution docs](https://detekt.dev/docs/gettingstarted/type-resolution) and [`RequiresAnalysisApi`](https://detekt.dev/kdoc/detekt-api/dev.detekt.api/-requires-analysis-api/index.html).

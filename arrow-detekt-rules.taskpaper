@@ -18,10 +18,6 @@ NoCatchAllInRaiseScope:
 	Pick it up only if it turns up in real code.
 
 New rules:
-- Flag an Either left unbound as a statement
-	Flag an Either, Option, Ior or Effect used as a bare statement inside a Raise scope (`either { findUser(id); ... }`). A `bind()` is missing, so the error is silently dropped. `NoNestedEither` only catches a missing bind when the result is stored or returned.
-	From woltapp/arrow-detekt-rules (https://github.com/woltapp/arrow-detekt-rules), whose `NoEffectScopeBindableValueAsStatement` does this against the detekt 1.x API, so detekt 2 users have nothing for it. arrow-intellij's `BindInspection` (https://github.com/arrow-kt/arrow-intellij) covers other missing binds, but those are compile errors anyway; the bare statement is the only case worth a build-time check.
-	Wolt's rule checks the expression's type against a list of bindable classes (`arrow.core.Either`, `Option`, `Ior`, `arrow.core.raise.Effect`, `EagerEffect`, `kotlin.Result`), checks it is used as a statement, and reports only the last call in a chain. Build it as "Adding a rule" in README.md describes. Found in the release review on 2026-11-02; the next rule to build after the first release.
 Housekeeping:
 - Guard against projects without Arrow
 	`coversRaise` in `NoCatchAllInRaiseScope.kt` builds `arrow.core.raise.RaiseCancellationException` with `buildClassType`, and the rule checks types against `arrow.core.raise.Raise`. We haven't checked what happens in a project without Arrow on its classpath; the tests always have it. If it throws, it fails the consumer's whole detekt run, not just this rule.
@@ -68,3 +64,7 @@ Archive:
 	`UseEnsure` and `UseEnsureNotNull` only flag an `if` with no else. arrow-intellij's `EnsureInspection` (https://github.com/arrow-kt/arrow-intellij) also flags `if (c) raise(e) else x` and `if (c) x else raise(e)`, and suggests `ensure` followed by the other branch's statements.
 	`ifRaise` in `Raise.kt` returns null as soon as there is an else, so it would need to check both branches and the message would need to say where the other branch goes. arrow-intellij skips the case where the raised error uses a variable the condition smart-casts; with Arrow 2.3 the suggested ensure still compiles (checked in the release review on 2026-11-02), so that guard may not be needed.
 	Pick it up if the pattern turns up in real code.
+- Flag an Either left unbound as a statement @done(2026-11-02 15:16)
+	Flag an Either, Option, Ior or Effect used as a bare statement inside a Raise scope (`either { findUser(id); ... }`). A `bind()` is missing, so the error is silently dropped. `NoNestedEither` only catches a missing bind when the result is stored or returned.
+	From woltapp/arrow-detekt-rules (https://github.com/woltapp/arrow-detekt-rules), whose `NoEffectScopeBindableValueAsStatement` does this against the detekt 1.x API, so detekt 2 users have nothing for it. arrow-intellij's `BindInspection` (https://github.com/arrow-kt/arrow-intellij) covers other missing binds, but those are compile errors anyway; the bare statement is the only case worth a build-time check.
+	Wolt's rule checks the expression's type against a list of bindable classes (`arrow.core.Either`, `Option`, `Ior`, `arrow.core.raise.Effect`, `EagerEffect`, `kotlin.Result`), checks it is used as a statement, and reports only the last call in a chain. Build it as "Adding a rule" in README.md describes. Found in the release review on 2026-11-02; the next rule to build after the first release.

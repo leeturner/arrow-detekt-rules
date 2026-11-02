@@ -46,9 +46,9 @@ class NoNestedEither(config: Config) :
     }
 }
 
-// Checks the Either supertype, so Either.Right<Either<...>> and type aliases count; Nothing is a subtype of Either but isn't one
+// Checks the Either supertype, so Either.Right<Either<...>> and type aliases count
 private fun KaSession.isNestedEither(type: KaType): Boolean {
     val either = (listOf(type) + type.allSupertypes).firstOrNull { (it as? KaClassType)?.classId == EITHER } as? KaClassType
     val right = either?.typeArguments?.getOrNull(1)?.type ?: return false
-    return !right.isNothingType && right.isSubtypeOf(EITHER)
+    return right.isSubtypeOf(EITHER)
 }
