@@ -30,6 +30,20 @@ What counts as running later is a guess:
 - Local functions and lambdas stored in a `val` are treated as running later, even when they are called straight away inside the `try` (`val t = { raise(e) }; t()`).
 - A non-inline helper that stores its lambda and returns something else is treated as running it now, so a raise inside it is flagged.
 
+### `NoFoldBackIntoEither`
+
+Flags `fold` on an Either when one lambda ends by building a `Left` and the other a `Right`, and suggests `mapLeft` and `map`.
+
+```kotlin
+// Flagged: Use .mapLeft { LookupFailed(it) }.map { it.name } instead of .fold({ Left(LookupFailed(it)) }, { Right(it.name) }).
+findUser(id).fold({ Left(LookupFailed(it)) }, { Right(it.name) })
+
+// Fine
+findUser(id).mapLeft { LookupFailed(it) }.map { it.name }
+```
+
+`Either.Left(...)` and `.left()` count too. A side that wraps its parameter unchanged (`{ Left(it) }`) is left out of the suggestion. Not flagged: a lambda that doesn't end in a `Left`/`Right` (a fold to a value, or a `flatMap`-style one returning another Either), both sides wrapped the same way (`{ Right(default) }, { Right(it) }` is a recover), named arguments, and a `fold` that isn't Either's.
+
 ### `PreferEitherCatch`
 
 Flags Arrow's `catch({ ... }) { ... }` when the handler only raises, and suggests `Either.catch` with `mapLeft`, which turns the exception into an error at the edge.

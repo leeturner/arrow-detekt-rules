@@ -3,6 +3,10 @@ package io.github.leeturner.arrowdetekt
 internal val PRELUDE =
     """
     import arrow.core.Either
+    import arrow.core.Either.Left
+    import arrow.core.Either.Right
+    import arrow.core.left
+    import arrow.core.right
     import arrow.core.raise.Raise
     import arrow.core.raise.catch
     import arrow.core.raise.either

@@ -7,5 +7,5 @@ import dev.detekt.api.RuleSetProvider
 class ArrowRuleSetProvider : RuleSetProvider {
     override val ruleSetId = RuleSetId("arrow")
 
-    override fun instance() = RuleSet(ruleSetId, listOf(::NoCatchAllInRaiseScope, ::PreferEitherCatch, ::UseEnsure, ::UseEnsureNotNull))
+    override fun instance() = RuleSet(ruleSetId, listOf(::NoCatchAllInRaiseScope, ::NoFoldBackIntoEither, ::PreferEitherCatch, ::UseEnsure, ::UseEnsureNotNull))
 }
