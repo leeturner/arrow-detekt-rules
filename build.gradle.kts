@@ -17,7 +17,7 @@ dependencies {
     compileOnly("dev.detekt:detekt-api:$detektVersion")
 
     testImplementation("dev.detekt:detekt-test:$detektVersion")
-    testImplementation("io.arrow-kt:arrow-core:2.2.3")
+    testImplementation("io.arrow-kt:arrow-core:2.3.0.1")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
     testImplementation(kotlin("test"))
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
