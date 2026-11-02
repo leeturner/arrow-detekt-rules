@@ -18,10 +18,6 @@ NoCatchAllInRaiseScope:
 	Pick it up only if it turns up in real code.
 
 New rules:
-- NoFoldBackIntoEither rule
-	Flag `.fold({ Left(f(it)) }, { Right(g(it)) })` and suggest `.mapLeft(f).map(g)`.
-	From the idea doc (https://claude.ai/artifact/B1DUsRYvotDnRQd9o25J4s, 2026-10-31), which says to build a rule once a code review finds the same pattern twice.
-	Build it as "Adding a rule" in README.md describes, with a message that says what to write instead. Match `fold` resolving to Arrow's `Either.fold`, with lambdas whose last expression builds a `Left` and a `Right` (including `.left()` and `.right()`).
 - NoNestedEither rule
 	Flag a declared or inferred `Either<E, Either<...>>`, which usually means a missing `bind()`. A likely bug rather than an idiom.
 	From the idea doc (https://claude.ai/artifact/B1DUsRYvotDnRQd9o25J4s, 2026-10-31), which says to build a rule once a code review finds the same pattern twice.
@@ -59,3 +55,7 @@ Archive:
 	Flag `either { catch({ ... }) { raise(f(it)) } }` and suggest `Either.catch { ... }.mapLeft(f)`.
 	From the idea doc (https://claude.ai/artifact/B1DUsRYvotDnRQd9o25J4s, 2026-10-31), which says to build a rule once a code review finds the same pattern twice. encore-web-api had this pattern 9 times before its review.
 	Build it as "Adding a rule" in README.md describes, with a message that says what to write instead. To tell whether the raise is inside a Raise scope, use `raiseReceivers` (`Raise.kt`), as `UseEnsure` does. Raise scopes hide inside lambdas (`parMap`, `withError`, `recover`) and arrow-intellij had to fix the same kind of false positive (https://slack-chats.kotlinlang.org/t/23059856/i-got-the-following-warning-from-intellij-gt-raise-context-m), so run it over real code before relying on it (see "Run the rules over real Arrow codebases"). Match `catch` by its resolved callable id (`arrow.core.raise.catch`), not its name.
+- NoFoldBackIntoEither rule @done(2026-11-02 10:42)
+	Flag `.fold({ Left(f(it)) }, { Right(g(it)) })` and suggest `.mapLeft(f).map(g)`.
+	From the idea doc (https://claude.ai/artifact/B1DUsRYvotDnRQd9o25J4s, 2026-10-31), which says to build a rule once a code review finds the same pattern twice.
+	Build it as "Adding a rule" in README.md describes, with a message that says what to write instead. Match `fold` resolving to Arrow's `Either.fold`, with lambdas whose last expression builds a `Left` and a `Right` (including `.left()` and `.right()`).
