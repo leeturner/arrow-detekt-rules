@@ -1,7 +1,7 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
-    kotlin("jvm") version "2.4.10"
+    alias(libs.plugins.kotlin.jvm)
 }
 
 group = "io.github.leeturner"
@@ -11,16 +11,14 @@ repositories {
     mavenCentral()
 }
 
-val detektVersion = "2.0.0-alpha.6"
-
 dependencies {
-    compileOnly("dev.detekt:detekt-api:$detektVersion")
+    compileOnly(libs.detekt.api)
 
-    testImplementation("dev.detekt:detekt-test:$detektVersion")
-    testImplementation("io.arrow-kt:arrow-core:2.2.3")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
+    testImplementation(libs.detekt.test)
+    testImplementation(libs.arrow.core)
+    testImplementation(libs.kotlinx.coroutines.core)
     testImplementation(kotlin("test"))
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 java {
