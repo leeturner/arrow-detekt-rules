@@ -16,7 +16,9 @@ import org.jetbrains.kotlin.psi.KtQualifiedExpression
 import org.jetbrains.kotlin.psi.KtSimpleNameExpression
 
 /**
- * Flags `if (cond) raise(e)` with no else and suggests `ensure(!cond) { e }`.
+ * Flags `if (cond) raise(e)` and suggests `ensure(!cond) { e }`. Also flags `if (cond) raise(e) else x` and
+ * `if (cond) x else raise(e)` when the `if` is a statement, a `val`/`var` initializer or a `return` value, and
+ * suggests `ensure` followed by the other branch.
  *
  * Null checks (`if (x == null) raise(e)`) are left to [UseEnsureNotNull].
  */
@@ -28,8 +30,9 @@ class UseEnsure(config: Config) :
         super.visitIfExpression(expression)
         val match = ifRaise(expression) ?: return
         if (nullChecked(match.condition) != null) return
-        val message = "Use ${match.receiver}ensure(${negate(match.condition)}) { ${match.error.text} } " +
-            "instead of if (${match.condition.text}) ${match.raise.text}."
+        val condition = if (match.raisesInElse) match.condition.text else negate(match.condition)
+        val message = "Use ${match.receiver}ensure($condition) { ${match.error.text} }${match.followedBy} " +
+            "instead of ${match.quoted}."
         report(Finding(Entity.from(expression), message))
     }
 }

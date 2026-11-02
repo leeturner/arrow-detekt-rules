@@ -63,8 +63,104 @@ class UseEnsureTest {
     }
 
     @Test
-    fun ignoresIfWithElse() {
+    fun flagsRaiseInThenWithElse() {
         val findings = lint("fun Raise<E>.g(c: Boolean) { if (c) raise(E) else plainCall() }")
+
+        assertEquals("Use ensure(!c) { E }, then the else branch, instead of if (c) raise(E) else ….", findings.single().message)
+    }
+
+    @Test
+    fun flagsRaiseInElse() {
+        val findings = lint("fun Raise<E>.g(c: Boolean) { if (c) plainCall() else raise(E) }")
+
+        assertEquals("Use ensure(c) { E }, then the if branch, instead of if (c) … else raise(E).", findings.single().message)
+    }
+
+    @Test
+    fun flagsRaiseInElseBlock() {
+        val findings = lint("fun Raise<E>.g(c: Boolean) { if (c) { plainCall() } else { raise(E) } }")
+
+        assertEquals(1, findings.size)
+    }
+
+    @Test
+    fun flagsExplicitReceiverInElse() {
+        val findings = lint("fun g(r: Raise<E>, c: Boolean) { if (c) plainCall() else r.raise(E) }")
+
+        assertEquals("Use r.ensure(c) { E }, then the if branch, instead of if (c) … else r.raise(E).", findings.single().message)
+    }
+
+    @Test
+    fun flagsValAssignedFromIf() {
+        val findings = lint("fun Raise<E>.g(n: Int) { val x = if (n < 0) raise(E) else n; println(x) }")
+
+        assertEquals(
+            "Use ensure(!(n < 0)) { E }, then the else branch, instead of if (n < 0) raise(E) else ….",
+            findings.single().message,
+        )
+    }
+
+    @Test
+    fun flagsReturnedIf() {
+        val findings = lint("fun Raise<E>.g(n: Int): Int { return if (n < 0) raise(E) else n }")
+
+        assertEquals(1, findings.size)
+    }
+
+    @Test
+    fun flagsIfAsLastLineOfEither() {
+        val findings = lint("fun f(n: Int) = either<E, Int> { if (n < 0) raise(E) else n }")
+
+        assertEquals(1, findings.size)
+    }
+
+    // the position check only applies to an if with an else
+    @Test
+    fun flagsNoElseIfInsideAnotherIf() {
+        val findings = lint("fun Raise<E>.g(a: Boolean, c: Boolean) { if (a) if (c) raise(E) }")
+
+        assertEquals(1, findings.size)
+    }
+
+    // moving the ensure above the line would raise even when x is set
+    @Test
+    fun ignoresIfAfterElvis() {
+        val findings = lint("fun Raise<E>.g(x: Int?, c: Boolean): Int { val y = x ?: if (c) raise(E) else 1; return y }")
+
+        assertEquals(0, findings.size)
+    }
+
+    @Test
+    fun ignoresIfAsArgument() {
+        val findings = lint("fun Raise<E>.g(c: Boolean) { println(if (c) raise(E) else 1) }")
+
+        assertEquals(0, findings.size)
+    }
+
+    @Test
+    fun ignoresExpressionBody() {
+        val findings = lint("fun Raise<E>.g(c: Boolean): Int = if (c) raise(E) else 1")
+
+        assertEquals(0, findings.size)
+    }
+
+    @Test
+    fun ignoresElseIfChain() {
+        val findings = lint("fun Raise<E>.g(a: Boolean, c: Boolean) { if (a) plainCall() else if (c) raise(E) else plainCall() }")
+
+        assertEquals(0, findings.size)
+    }
+
+    @Test
+    fun ignoresBothBranchesRaising() {
+        val findings = lint("fun Raise<E>.g(c: Boolean) { if (c) raise(E) else raise(E) }")
+
+        assertEquals(0, findings.size)
+    }
+
+    @Test
+    fun ignoresElseBlockWithMoreThanTheRaise() {
+        val findings = lint("fun Raise<E>.g(c: Boolean) { if (c) plainCall() else { plainCall(); raise(E) } }")
 
         assertEquals(0, findings.size)
     }

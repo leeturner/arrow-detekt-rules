@@ -8,7 +8,8 @@ import dev.detekt.api.Rule
 import org.jetbrains.kotlin.psi.KtIfExpression
 
 /**
- * Flags `if (x == null) raise(e)` with no else and suggests `ensureNotNull(x) { e }`, which also smart-casts x.
+ * Flags `if (x == null) raise(e)` and suggests `ensureNotNull(x) { e }`, which also smart-casts x. With an else,
+ * flags it in the same places as [UseEnsure] and suggests `ensureNotNull` followed by the other branch.
  * `x ?: raise(e)` is idiomatic Kotlin and isn't flagged.
  */
 class UseEnsureNotNull(config: Config) :
@@ -18,9 +19,10 @@ class UseEnsureNotNull(config: Config) :
     override fun visitIfExpression(expression: KtIfExpression) {
         super.visitIfExpression(expression)
         val match = ifRaise(expression) ?: return
+        if (match.raisesInElse) return
         val value = nullChecked(match.condition)?.text ?: return
-        val message = "Use ${match.receiver}ensureNotNull($value) { ${match.error.text} } " +
-            "instead of if (${match.condition.text}) ${match.raise.text}. It also smart-casts $value to non-null."
+        val message = "Use ${match.receiver}ensureNotNull($value) { ${match.error.text} }${match.followedBy} " +
+            "instead of ${match.quoted}. It also smart-casts $value to non-null."
         report(Finding(Entity.from(expression), message))
     }
 }

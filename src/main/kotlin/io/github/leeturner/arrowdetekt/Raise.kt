@@ -15,7 +15,9 @@ import org.jetbrains.kotlin.psi.KtBlockExpression
 import org.jetbrains.kotlin.psi.KtCallExpression
 import org.jetbrains.kotlin.psi.KtExpression
 import org.jetbrains.kotlin.psi.KtIfExpression
+import org.jetbrains.kotlin.psi.KtProperty
 import org.jetbrains.kotlin.psi.KtQualifiedExpression
+import org.jetbrains.kotlin.psi.KtReturnExpression
 
 internal val RAISE = ClassId.fromString("arrow/core/raise/Raise")
 
@@ -36,16 +38,58 @@ internal fun KaSession.raiseReceivers(call: KaFunctionCall<*>): List<KaReceiverV
     return listOfNotNull(call.dispatchReceiver?.takeIf { it.type.isSubtypeOf(RAISE) }, extension) + context
 }
 
-/** An `if` with no else whose only statement is Arrow's `raise(error)`, called on [receiver] (`r.`, or empty). */
-internal class IfRaise(val condition: KtExpression, val raise: KtExpression, val receiver: String, val error: KtExpression)
+/**
+ * An `if` where one branch is only Arrow's `raise(error)`, called on [receiver] (`r.`, or empty).
+ * [quoted] is the `if` as messages show it, and [followedBy] says where the other branch goes ("" with no else).
+ */
+internal class IfRaise(
+    val condition: KtExpression,
+    val receiver: String,
+    val error: KtExpression,
+    val raisesInElse: Boolean,
+    val quoted: String,
+    val followedBy: String,
+)
 
+/**
+ * `if (c) raise(e)`, `if (c) raise(e) else x` or `if (c) x else raise(e)`. With an else, only when the `if` is a
+ * statement, a `val`/`var` initializer or a `return` value, where `ensure` then the other branch is a plain rewrite.
+ */
 internal fun ifRaise(expression: KtIfExpression): IfRaise? {
-    if (expression.`else` != null) return null
     val condition = expression.condition ?: return null
-    val then = expression.then.let { (it as? KtBlockExpression)?.statements?.singleOrNull() ?: it } ?: return null
-    val error = raisedError(then) ?: return null
-    val receiver = (then as? KtQualifiedExpression)?.let { it.receiverExpression.text + it.operationTokenNode.text }.orEmpty()
-    return IfRaise(condition, then, receiver, error)
+    val then = expression.then?.let(::single) ?: return null
+    val otherwise = expression.`else`?.let(::single)
+    val thenError = raisedError(then)
+    if (otherwise == null) {
+        if (expression.`else` != null || thenError == null) return null
+        return IfRaise(condition, receiverOf(then), thenError, false, "if (${condition.text}) ${then.text}", "")
+    }
+    if (!isPlainStatement(expression)) return null
+    val elseError = raisedError(otherwise)
+    return when {
+        thenError != null && elseError != null -> null
+        thenError != null -> IfRaise(
+            condition, receiverOf(then), thenError, false,
+            "if (${condition.text}) ${then.text} else …", ", then the else branch,",
+        )
+        elseError != null -> IfRaise(
+            condition, receiverOf(otherwise), elseError, true,
+            "if (${condition.text}) … else ${otherwise.text}", ", then the if branch,",
+        )
+        else -> null
+    }
+}
+
+private fun single(branch: KtExpression): KtExpression? = if (branch is KtBlockExpression) branch.statements.singleOrNull() else branch
+
+private fun receiverOf(raise: KtExpression): String =
+    (raise as? KtQualifiedExpression)?.let { it.receiverExpression.text + it.operationTokenNode.text }.orEmpty()
+
+private fun isPlainStatement(expression: KtIfExpression): Boolean = when (val parent = expression.parent) {
+    is KtBlockExpression -> true
+    is KtProperty -> parent.initializer == expression
+    is KtReturnExpression -> parent.returnedExpression == expression
+    else -> false
 }
 
 /** The error [expression] raises when it is Arrow's `raise(error)` or `r.raise(error)`, else null. */
