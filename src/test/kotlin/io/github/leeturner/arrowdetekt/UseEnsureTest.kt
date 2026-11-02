@@ -56,6 +56,35 @@ class UseEnsureTest {
     }
 
     @Test
+    fun flipsEqualityInSuggestion() {
+        val findings = lint("fun Raise<E>.g(a: Int, b: Int) { if (a == b) raise(E) }")
+
+        assertEquals("Use ensure(a != b) { E } instead of if (a == b) raise(E).", findings.single().message)
+    }
+
+    @Test
+    fun flipsInequalityInSuggestion() {
+        val findings = lint("fun Raise<E>.g(a: Any, b: Any) { if (a !== b) raise(E) }")
+
+        assertEquals("Use ensure(a === b) { E } instead of if (a !== b) raise(E).", findings.single().message)
+    }
+
+    @Test
+    fun flipsTypeCheckInSuggestion() {
+        val findings = lint("fun Raise<E>.g(x: Any) { if (x !is String) raise(E) }")
+
+        assertEquals("Use ensure(x is String) { E } instead of if (x !is String) raise(E).", findings.single().message)
+    }
+
+    @Test
+    fun flipsContainsInSuggestion() {
+        val findings = lint("fun Raise<E>.g(n: Int, xs: List<Int>) { if (n in xs) raise(E) }")
+
+        assertEquals("Use ensure(n !in xs) { E } instead of if (n in xs) raise(E).", findings.single().message)
+    }
+
+    // !(a > b) isn't a <= b when either is NaN, so comparisons stay wrapped
+    @Test
     fun wrapsCompoundConditionInSuggestion() {
         val findings = lint("fun Raise<E>.g(n: Int) { if (n > 0) raise(E) }")
 

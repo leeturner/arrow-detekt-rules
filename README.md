@@ -149,6 +149,8 @@ either {
 }
 ```
 
+If the `if` block holds a comment explaining the raise, move it above the `ensure` line so it isn't lost.
+
 Not flagged: an `if` with an `else` anywhere else (a function argument, after `?:`, an expression body), where moving the check above the line isn't a plain rewrite; both branches raising; one branch raising and the other throwing (`if (c) raise(e) else throw x`); an error that relies on a smart cast from the `if` (`if (e is MyError) raise(e)`), which doesn't reach `ensure`'s lambda; a block that does more than raise; a `raise` that isn't Arrow's; and null checks (`if (x == null) raise(e)`, `if (x != null) … else raise(e)`), which `UseEnsureNotNull` covers.
 
 ### `UseEnsureNotNull`
