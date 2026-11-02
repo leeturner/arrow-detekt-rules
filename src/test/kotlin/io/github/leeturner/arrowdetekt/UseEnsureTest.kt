@@ -199,9 +199,14 @@ class UseEnsureTest {
 
     @Test
     fun ignoresNotNullCheckWithRaiseInElse() {
-        val findings = lint(
-            "fun Raise<E>.g(x: String?) { if (x != null) println(x) else raise(E); if (null != x) println(x) else raise(E) }",
-        )
+        val findings = lint("fun Raise<E>.g(x: String?) { if (x != null) println(x) else raise(E) }")
+
+        assertEquals(0, findings.size)
+    }
+
+    @Test
+    fun ignoresNullOnTheLeftWithRaiseInElse() {
+        val findings = lint("fun Raise<E>.g(x: String?) { if (null != x) println(x) else raise(E) }")
 
         assertEquals(0, findings.size)
     }
