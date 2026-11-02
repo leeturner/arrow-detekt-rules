@@ -23,6 +23,13 @@ class NoCatchAllInRaiseScopeTest {
     }
 
     @Test
+    fun flagsLabelledRunCatching() {
+        val findings = lint("fun f() = either<E, String?> { runCatching block@{ findUser(1).bind() }.getOrNull() }")
+
+        assertEquals(1, findings.size)
+    }
+
+    @Test
     fun flagsReceiverRunCatching() {
         val findings = lint("fun f() = either<E, String?> { 1.runCatching { findUser(this).bind() }.getOrNull() }")
 
@@ -169,6 +176,83 @@ class NoCatchAllInRaiseScopeTest {
         val findings = lint("fun f() = either<E, String?> { runCatching { findUser(1).bind() }.getOrNull() }")
 
         assertFalse("nonFatalOrThrow" in findings.single().message)
+    }
+
+    // A crossinline lambda can be stored, so it gets the same guess as a non-inline one
+    @Test
+    fun ignoresCrossinlineLambdaStoredForLater() {
+        val findings = lint(
+            """
+            inline fun later(crossinline block: () -> Unit): Lazy<Unit> = lazy { block() }
+            fun f() = either<E, Unit> { try { later { raise(E) } } catch (e: Exception) { } }
+            """.trimIndent(),
+        )
+
+        assertEquals(0, findings.size)
+    }
+
+    @Test
+    fun flagsCrossinlineLambdaRunDuringTheCall() {
+        val findings = lint(
+            """
+            inline fun now(crossinline block: () -> Unit) { runNow { block() } }
+            fun f() = either<E, Unit> { try { now { raise(E) } } catch (e: Exception) { } }
+            """.trimIndent(),
+        )
+
+        assertEquals(1, findings.size)
+    }
+
+    @Test
+    fun ignoresGetterInLocalObject() {
+        val findings = lint("fun f() = either<E, Unit> { try { object { val x: Int get() = raise(E) } } catch (e: Exception) { } }")
+
+        assertEquals(0, findings.size)
+    }
+
+    @Test
+    fun flagsPropertyInitializerInLocalObject() {
+        val findings = lint("fun f() = either<E, Unit> { try { object { val x: Int = raise(E) } } catch (e: Exception) { } }")
+
+        assertEquals(1, findings.size)
+    }
+
+    // Members declared outside Raise don't raise, even when called on one
+    @Test
+    fun ignoresAnyMemberCalledOnRaise() {
+        val findings = lint("fun g(r: Raise<E>) { try { r.toString() } catch (e: Exception) { } }")
+
+        assertEquals(0, findings.size)
+    }
+
+    @Test
+    fun ignoresSuperMemberInRaiseImplementation() {
+        val findings = lint("abstract class R : Raise<E> { fun f() { try { super.toString() } catch (e: Exception) { } } }")
+
+        assertEquals(0, findings.size)
+    }
+
+    @Test
+    fun ignoresInnerClassConstructorInRaiseImplementation() {
+        val findings = lint("abstract class R : Raise<E> { inner class I; fun f() { try { I() } catch (e: Exception) { } } }")
+
+        assertEquals(0, findings.size)
+    }
+
+    @Test
+    fun flagsRaiseInRaiseImplementation() {
+        val findings = lint("abstract class R : Raise<E> { fun f() { try { raise(E) } catch (e: Exception) { } } }")
+
+        assertEquals(1, findings.size)
+    }
+
+    @Test
+    fun flagsOwnMemberInRaiseImplementation() {
+        val findings = lint(
+            "abstract class R : Raise<E> { fun fail(): Nothing = raise(E); fun f() { try { fail() } catch (e: Exception) { } } }",
+        )
+
+        assertEquals(1, findings.size)
     }
 
     // Raise passed in as a parameter and entered with `with`

@@ -33,6 +33,7 @@ import org.jetbrains.kotlin.psi.KtIsExpression
 import org.jetbrains.kotlin.psi.KtLambdaExpression
 import org.jetbrains.kotlin.psi.KtNameReferenceExpression
 import org.jetbrains.kotlin.psi.KtNamedFunction
+import org.jetbrains.kotlin.psi.KtPropertyAccessor
 import org.jetbrains.kotlin.psi.KtPsiUtil
 import org.jetbrains.kotlin.psi.KtQualifiedExpression
 import org.jetbrains.kotlin.psi.KtThisExpression
@@ -101,7 +102,9 @@ private fun runCatchingBody(call: KtCallExpression): KtExpression? {
             ?.asString() == "kotlin.runCatching"
     }
     if (!isRunCatching) return null
-    return call.valueArguments.firstNotNullOfOrNull { (it.getArgumentExpression() as? KtLambdaExpression)?.bodyExpression }
+    return call.valueArguments.firstNotNullOfOrNull { argument ->
+        (argument.getArgumentExpression()?.let(KtPsiUtil::safeDeparenthesize) as? KtLambdaExpression)?.bodyExpression
+    }
 }
 
 /** Like [runCatchingBody], but null when the result goes straight to `getOrThrow()`, which rethrows. */
@@ -186,11 +189,12 @@ internal fun containsEscapingRaiseCall(body: KtElement): Boolean =
         between.all(::runsInPlace) && between.none(::isInnerCatchAllBody) && raisesOutside(call, body)
     }
 
-// Local functions and stored lambdas run later. A lambda or anonymous function passed as an argument
-// is assumed to run during the call (inline functions, withContext, transaction, ...).
+// Local functions, property getters and setters, and stored lambdas run later. A lambda or anonymous
+// function passed as an argument is assumed to run during the call (inline functions, withContext, transaction, ...).
 private fun runsInPlace(element: PsiElement): Boolean = when (element) {
     is KtFunctionLiteral -> argumentRunsInPlace(element)
     is KtNamedFunction -> element.nameIdentifier == null && argumentRunsInPlace(element)
+    is KtPropertyAccessor -> false
     else -> true
 }
 
@@ -211,7 +215,9 @@ private fun argumentRunsInPlace(function: KtFunction): Boolean {
     return analyze(call) {
         val resolved = call.resolveToCall()?.successfulFunctionCallOrNull() ?: return@analyze true
         val parameter = resolved.valueArgumentMapping[expression]?.symbol
-        val inlined = (resolved.symbol as? KaNamedFunctionSymbol)?.isInline == true && parameter?.isNoinline == false
+        // a crossinline lambda may be stored (`lazy { block() }`), so it gets the result-type guess below
+        val inlined = (resolved.symbol as? KaNamedFunctionSymbol)?.isInline == true &&
+            parameter?.isNoinline == false && !parameter.isCrossinline
         inlined || LAZY_RESULTS.none { resolved.signature.returnType.isSubtypeOf(it) }
     }
 }
