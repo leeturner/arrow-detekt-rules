@@ -7,7 +7,6 @@ import dev.detekt.api.Entity
 import dev.detekt.api.Finding
 import dev.detekt.api.RequiresAnalysisApi
 import dev.detekt.api.Rule
-import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
 import org.jetbrains.kotlin.analysis.api.analyze
 import org.jetbrains.kotlin.analysis.api.resolution.KaExplicitReceiverValue
@@ -19,7 +18,6 @@ import org.jetbrains.kotlin.analysis.api.resolution.symbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaNamedFunctionSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaReceiverParameterSymbol
 import org.jetbrains.kotlin.analysis.api.symbols.KaSymbol
-import org.jetbrains.kotlin.analysis.api.symbols.contextParameters
 import org.jetbrains.kotlin.idea.references.mainReference
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.psi.KtBlockExpression
@@ -91,7 +89,6 @@ class NoCatchAllInRaiseScope(config: Config) :
     }
 }
 
-private val RAISE = ClassId.fromString("arrow/core/raise/Raise")
 private val RAISE_CANCELLATION = ClassId.fromString("arrow/core/raise/RaiseCancellationException")
 
 // ---- Catch-alls ------------------------------------------------------------------------------
@@ -233,19 +230,9 @@ private fun isInnerCatchAllBody(element: PsiElement): Boolean {
     }
 }
 
-// Checks the callee's declared receivers, not the values passed: inside `either { }` the generic
-// `T.runCatching { }` gets the Raise as its receiver, but it doesn't raise.
-@OptIn(KaExperimentalApi::class) // contextArguments
 private fun raisesOutside(call: KtCallExpression, body: KtElement): Boolean = analyze(call) {
     val resolved = call.resolveToCall()?.successfulFunctionCallOrNull() ?: return@analyze false
-    val symbol = resolved.symbol
-    val extension = resolved.extensionReceiver
-        ?.takeIf { (symbol.receiverParameter?.returnType ?: it.type).isSubtypeOf(RAISE) }
-    val context = resolved.contextArguments.zip(symbol.contextParameters)
-        .filter { (_, parameter) -> parameter.returnType.isSubtypeOf(RAISE) }
-        .map { (argument, _) -> argument }
-    (listOfNotNull(resolved.dispatchReceiver?.takeIf { it.type.isSubtypeOf(RAISE) }, extension) + context)
-        .any { !providedInside(it, body) }
+    raiseReceivers(resolved).any { !providedInside(it, body) }
 }
 
 // ---- Where a Raise comes from ----------------------------------------------------------------

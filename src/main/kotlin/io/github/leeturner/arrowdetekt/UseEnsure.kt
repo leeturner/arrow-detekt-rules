@@ -1,0 +1,43 @@
+package io.github.leeturner.arrowdetekt
+
+import dev.detekt.api.Config
+import dev.detekt.api.Entity
+import dev.detekt.api.Finding
+import dev.detekt.api.RequiresAnalysisApi
+import dev.detekt.api.Rule
+import org.jetbrains.kotlin.lexer.KtTokens
+import org.jetbrains.kotlin.psi.KtCallExpression
+import org.jetbrains.kotlin.psi.KtExpression
+import org.jetbrains.kotlin.psi.KtIfExpression
+import org.jetbrains.kotlin.psi.KtParenthesizedExpression
+import org.jetbrains.kotlin.psi.KtPrefixExpression
+import org.jetbrains.kotlin.psi.KtPsiUtil
+import org.jetbrains.kotlin.psi.KtQualifiedExpression
+import org.jetbrains.kotlin.psi.KtSimpleNameExpression
+
+/**
+ * Flags `if (cond) raise(e)` with no else and suggests `ensure(!cond) { e }`.
+ *
+ * Null checks (`if (x == null) raise(e)`) are left to [UseEnsureNotNull].
+ */
+class UseEnsure(config: Config) :
+    Rule(config, "An if with no else that only raises reads better as ensure(condition) { error }."),
+    RequiresAnalysisApi {
+
+    override fun visitIfExpression(expression: KtIfExpression) {
+        super.visitIfExpression(expression)
+        val match = ifRaise(expression) ?: return
+        if (nullChecked(match.condition) != null) return
+        val message = "Use ${match.receiver}ensure(${negate(match.condition)}) { ${match.error.text} } " +
+            "instead of if (${match.condition.text}) ${match.raise.text}."
+        report(Finding(Entity.from(expression), message))
+    }
+}
+
+private fun negate(condition: KtExpression): String = when (condition) {
+    is KtPrefixExpression if condition.operationToken == KtTokens.EXCL ->
+        condition.baseExpression?.let { KtPsiUtil.safeDeparenthesize(it).text } ?: "!${condition.text}"
+    is KtSimpleNameExpression, is KtCallExpression, is KtQualifiedExpression, is KtParenthesizedExpression ->
+        "!${condition.text}"
+    else -> "!(${condition.text})"
+}
