@@ -46,11 +46,31 @@ either {
 }
 ```
 
-Not flagged: an `if` with an `else`, a block that does more than raise, a `raise` that isn't Arrow's, and null checks (`if (x == null) raise(e)`), which read better as `ensureNotNull(x) { e }`. It is an idiom nudge, so turn it on in the project's detekt config:
+Not flagged: an `if` with an `else`, a block that does more than raise, a `raise` that isn't Arrow's, and null checks (`if (x == null) raise(e)`), which `UseEnsureNotNull` covers.
+
+### `UseEnsureNotNull` (inactive by default)
+
+Flags `if (x == null) raise(e)` (or `null == x`) with no `else`, and suggests `ensureNotNull(x) { e }`, which also smart-casts `x`. `x ?: raise(e)` is idiomatic Kotlin and isn't flagged.
+
+```kotlin
+// Flagged: Use ensureNotNull(user) { UserMissing } instead of if (user == null) raise(UserMissing). It also smart-casts user to non-null.
+either {
+    if (user == null) raise(UserMissing)
+}
+
+// Fine
+either {
+    ensureNotNull(user) { UserMissing }
+}
+```
+
+Both are idiom nudges, so turn them on in the project's detekt config:
 
 ```yaml
 arrow:
   UseEnsure:
+    active: true
+  UseEnsureNotNull:
     active: true
 ```
 
@@ -99,6 +119,6 @@ After changing a rule, run `./gradlew --stop` in the consuming project before re
 5. Test it the way `NoCatchAllInRaiseScopeTest` does: `lintWithContext(createEnvironment(), PRELUDE + snippet)`, with the shared `PRELUDE` from `Prelude.kt`. The test task sets `compile-test-snippets=true`, so every snippet must compile; otherwise unresolved Arrow calls make "not flagged" tests pass for the wrong reason. Arrow and kotlinx-coroutines are on the test classpath. Cover at least one flagged and one unflagged case, plus any false positives found in real code.
 6. Make the message say what to write instead, as stock detekt style rules do.
 
-To tell whether a call raises into a Raise scope, check the callee's declared receiver type, not the type of the value passed: inside `either { }`, the generic `T.runCatching` receives the Raise but doesn't raise. `raiseReceivers` in `Raise.kt` does this; `NoCatchAllInRaiseScope` and `UseEnsure` both use it.
+To tell whether a call raises into a Raise scope, check the callee's declared receiver type, not the type of the value passed: inside `either { }`, the generic `T.runCatching` receives the Raise but doesn't raise. `raiseReceivers` in `Raise.kt` does this, and every rule uses it. For an `if (...) raise(e)` rule, start from `ifRaise` in the same file, as `UseEnsure` and `UseEnsureNotNull` do.
 
 The detekt 2 docs have no complete type-resolution rule example, so `NoCatchAllInRaiseScope` is the working reference. See also detekt's [type resolution docs](https://detekt.dev/docs/gettingstarted/type-resolution) and [`RequiresAnalysisApi`](https://detekt.dev/kdoc/detekt-api/dev.detekt.api/-requires-analysis-api/index.html).

@@ -2,11 +2,20 @@ package io.github.leeturner.arrowdetekt
 
 import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
+import org.jetbrains.kotlin.analysis.api.analyze
 import org.jetbrains.kotlin.analysis.api.resolution.KaFunctionCall
 import org.jetbrains.kotlin.analysis.api.resolution.KaReceiverValue
+import org.jetbrains.kotlin.analysis.api.resolution.successfulFunctionCallOrNull
 import org.jetbrains.kotlin.analysis.api.resolution.symbol
 import org.jetbrains.kotlin.analysis.api.symbols.contextParameters
+import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.name.ClassId
+import org.jetbrains.kotlin.psi.KtBinaryExpression
+import org.jetbrains.kotlin.psi.KtBlockExpression
+import org.jetbrains.kotlin.psi.KtCallExpression
+import org.jetbrains.kotlin.psi.KtExpression
+import org.jetbrains.kotlin.psi.KtIfExpression
+import org.jetbrains.kotlin.psi.KtQualifiedExpression
 
 internal val RAISE = ClassId.fromString("arrow/core/raise/Raise")
 
@@ -25,4 +34,35 @@ internal fun KaSession.raiseReceivers(call: KaFunctionCall<*>): List<KaReceiverV
         .filter { (_, parameter) -> parameter.returnType.isSubtypeOf(RAISE) }
         .map { (argument, _) -> argument }
     return listOfNotNull(call.dispatchReceiver?.takeIf { it.type.isSubtypeOf(RAISE) }, extension) + context
+}
+
+/** An `if` with no else whose only statement is Arrow's `raise(error)`, called on [receiver] (`r.`, or empty). */
+internal class IfRaise(val condition: KtExpression, val raise: KtExpression, val receiver: String, val error: KtExpression)
+
+internal fun ifRaise(expression: KtIfExpression): IfRaise? {
+    if (expression.`else` != null) return null
+    val condition = expression.condition ?: return null
+    val then = expression.then.let { (it as? KtBlockExpression)?.statements?.singleOrNull() ?: it } ?: return null
+    val qualified = then as? KtQualifiedExpression
+    val call = (qualified?.selectorExpression ?: then) as? KtCallExpression ?: return null
+    val error = call.valueArguments.singleOrNull()?.getArgumentExpression() ?: return null
+    if (!isArrowRaise(call)) return null
+    val receiver = qualified?.let { it.receiverExpression.text + it.operationTokenNode.text }.orEmpty()
+    return IfRaise(condition, then, receiver, error)
+}
+
+private fun isArrowRaise(call: KtCallExpression): Boolean = analyze(call) {
+    val resolved = call.resolveToCall()?.successfulFunctionCallOrNull() ?: return@analyze false
+    resolved.symbol.callableId?.callableName?.asString() == "raise" && raiseReceivers(resolved).isNotEmpty()
+}
+
+/** `x` when [condition] is `x == null` or `null == x`, else null. */
+internal fun nullChecked(condition: KtExpression): KtExpression? {
+    val check = condition as? KtBinaryExpression ?: return null
+    if (check.operationToken != KtTokens.EQEQ) return null
+    return when {
+        check.right?.text == "null" -> check.left
+        check.left?.text == "null" -> check.right
+        else -> null
+    }
 }

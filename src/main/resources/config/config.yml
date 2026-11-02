@@ -3,3 +3,5 @@ arrow:
     active: true
   UseEnsure:
     active: false
+  UseEnsureNotNull:
+    active: false
