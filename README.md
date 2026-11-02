@@ -30,6 +30,24 @@ What counts as running later is a guess:
 - Local functions and lambdas stored in a `val` are treated as running later, even when they are called straight away inside the `try` (`val t = { raise(e) }; t()`).
 - A non-inline helper that stores its lambda and returns something else is treated as running it now, so a raise inside it is flagged.
 
+### `PreferEitherCatch`
+
+Flags Arrow's `catch({ ... }) { ... }` when the handler only raises, and suggests `Either.catch` with `mapLeft`, which turns the exception into an error at the edge.
+
+```kotlin
+// Flagged: Use Either.catch { ... }.mapLeft { LookupFailed(it) }.bind() instead of catch({ ... }) { raise(LookupFailed(it)) }.
+either {
+    catch({ repository.find(id) }) { raise(LookupFailed(it)) }
+}
+
+// Fine
+either {
+    Either.catch { repository.find(id) }.mapLeft { LookupFailed(it) }.bind()
+}
+```
+
+Not flagged: a handler that does more than raise or returns a value, a `catch` that isn't Arrow's, and the reified `catch<IOException, _>` (or a handler typed `{ e: IOException -> ... }`), whose equivalent is `Either.catchOrThrow` rather than `Either.catch`.
+
 ### `UseEnsure`
 
 Flags an `if` with no `else` whose only statement is Arrow's `raise`, and says what to write instead.
@@ -109,6 +127,6 @@ After changing a rule, run `./gradlew --stop` in the consuming project before re
 5. Test it the way `NoCatchAllInRaiseScopeTest` does: `lintWithContext(createEnvironment(), PRELUDE + snippet)`, with the shared `PRELUDE` from `Prelude.kt`. The test task sets `compile-test-snippets=true`, so every snippet must compile; otherwise unresolved Arrow calls make "not flagged" tests pass for the wrong reason. Arrow and kotlinx-coroutines are on the test classpath. Cover at least one flagged and one unflagged case, plus any false positives found in real code.
 6. Make the message say what to write instead, as stock detekt style rules do.
 
-To tell whether a call raises into a Raise scope, check the callee's declared receiver type, not the type of the value passed: inside `either { }`, the generic `T.runCatching` receives the Raise but doesn't raise. `raiseReceivers` in `Raise.kt` does this, and every rule uses it. For an `if (...) raise(e)` rule, start from `ifRaise` in the same file, as `UseEnsure` and `UseEnsureNotNull` do.
+To tell whether a call raises into a Raise scope, check the callee's declared receiver type, not the type of the value passed: inside `either { }`, the generic `T.runCatching` receives the Raise but doesn't raise. `raiseReceivers` in `Raise.kt` does this, and every rule uses it. For an `if (...) raise(e)` rule, start from `ifRaise` in the same file, as `UseEnsure` and `UseEnsureNotNull` do; for any other statement that only raises, `raisedError`, as `PreferEitherCatch` does.
 
 The detekt 2 docs have no complete type-resolution rule example, so `NoCatchAllInRaiseScope` is the working reference. See also detekt's [type resolution docs](https://detekt.dev/docs/gettingstarted/type-resolution) and [`RequiresAnalysisApi`](https://detekt.dev/kdoc/detekt-api/dev.detekt.api/-requires-analysis-api/index.html).

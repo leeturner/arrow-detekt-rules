@@ -43,12 +43,16 @@ internal fun ifRaise(expression: KtIfExpression): IfRaise? {
     if (expression.`else` != null) return null
     val condition = expression.condition ?: return null
     val then = expression.then.let { (it as? KtBlockExpression)?.statements?.singleOrNull() ?: it } ?: return null
-    val qualified = then as? KtQualifiedExpression
-    val call = (qualified?.selectorExpression ?: then) as? KtCallExpression ?: return null
-    val error = call.valueArguments.singleOrNull()?.getArgumentExpression() ?: return null
-    if (!isArrowRaise(call)) return null
-    val receiver = qualified?.let { it.receiverExpression.text + it.operationTokenNode.text }.orEmpty()
+    val error = raisedError(then) ?: return null
+    val receiver = (then as? KtQualifiedExpression)?.let { it.receiverExpression.text + it.operationTokenNode.text }.orEmpty()
     return IfRaise(condition, then, receiver, error)
+}
+
+/** The error [expression] raises when it is Arrow's `raise(error)` or `r.raise(error)`, else null. */
+internal fun raisedError(expression: KtExpression): KtExpression? {
+    val call = ((expression as? KtQualifiedExpression)?.selectorExpression ?: expression) as? KtCallExpression ?: return null
+    val error = call.valueArguments.singleOrNull()?.getArgumentExpression() ?: return null
+    return error.takeIf { isArrowRaise(call) }
 }
 
 private fun isArrowRaise(call: KtCallExpression): Boolean = analyze(call) {
