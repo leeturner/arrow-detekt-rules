@@ -178,6 +178,44 @@ class NoCatchAllInRaiseScopeTest {
         assertFalse("nonFatalOrThrow" in findings.single().message)
     }
 
+    // Members declared outside Raise don't raise, even when called on one
+    @Test
+    fun ignoresAnyMemberCalledOnRaise() {
+        val findings = lint("fun g(r: Raise<E>) { try { r.toString() } catch (e: Exception) { } }")
+
+        assertEquals(0, findings.size)
+    }
+
+    @Test
+    fun ignoresSuperMemberInRaiseImplementation() {
+        val findings = lint("abstract class R : Raise<E> { fun f() { try { super.toString() } catch (e: Exception) { } } }")
+
+        assertEquals(0, findings.size)
+    }
+
+    @Test
+    fun ignoresInnerClassConstructorInRaiseImplementation() {
+        val findings = lint("abstract class R : Raise<E> { inner class I; fun f() { try { I() } catch (e: Exception) { } } }")
+
+        assertEquals(0, findings.size)
+    }
+
+    @Test
+    fun flagsRaiseInRaiseImplementation() {
+        val findings = lint("abstract class R : Raise<E> { fun f() { try { raise(E) } catch (e: Exception) { } } }")
+
+        assertEquals(1, findings.size)
+    }
+
+    @Test
+    fun flagsOwnMemberInRaiseImplementation() {
+        val findings = lint(
+            "abstract class R : Raise<E> { fun fail(): Nothing = raise(E); fun f() { try { fail() } catch (e: Exception) { } } }",
+        )
+
+        assertEquals(1, findings.size)
+    }
+
     // Raise passed in as a parameter and entered with `with`
     @Test
     fun flagsRaiseEnteredWithWith() {
