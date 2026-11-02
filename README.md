@@ -1,6 +1,36 @@
 # arrow-detekt-rules
 
-Proof of concept: a [detekt](https://detekt.dev) 2 rule set for [Arrow](https://arrow-kt.io) code. Built against detekt `2.0.0-alpha.6`; not released.
+A [detekt](https://detekt.dev) 2 rule set for [Arrow](https://arrow-kt.io) code.
+
+## Usage
+
+Add it to the project's `build.gradle.kts`. It's on Maven Central, so `mavenCentral()` in `repositories` is enough:
+
+```kotlin
+dependencies {
+    detektPlugins("io.github.leeturner:arrow-detekt-rules:0.1.0")
+}
+```
+
+The rules need type resolution, so they run in `detektMain` / `detektTest`, not plain `detekt`.
+
+Every rule is active by default (the jar ships `config/config.yml`). To turn one off, add it to the project's detekt config:
+
+```yaml
+arrow:
+  UseEnsure:
+    active: false
+```
+
+### Compatibility
+
+Each release is built for one detekt version, since a rule set built against one detekt API may not load in another. Use the release that matches your detekt version.
+
+| arrow-detekt-rules | detekt |
+|--------------------|--------|
+| 0.1.0 | 2.0.0-alpha.6 |
+
+0.1.0 is built with Kotlin 2.4.21 for Java 17 and later, and tested against Arrow 2.2 and 2.3.
 
 ## Rules
 
@@ -110,41 +140,19 @@ either {
 }
 ```
 
-The rules need type resolution, so they run in `detektMain` / `detektTest`, not plain `detekt`.
-
-## Using it from a local checkout
-
-In the consuming project's `build.gradle.kts`:
-
-```kotlin
-dependencies {
-    detektPlugins("io.github.leeturner:arrow-detekt-rules:0.1.0-SNAPSHOT")
-}
-```
-
-Every rule is active by default (the jar ships `config/config.yml`). To turn one off, add it to the project's detekt config:
-
-```yaml
-arrow:
-  UseEnsure:
-    active: false
-```
-
-Then point Gradle at this checkout, which builds it and swaps it in for the dependency:
-
-```shell
-./gradlew detektMain --include-build ../path/to/arrow-detekt-rules
-```
-
-Without `--include-build` the dependency won't resolve, so keep that line out of the consumer's committed build until there is a release.
-
-After changing a rule, run `./gradlew --stop` in the consuming project before re-running detekt. Its Gradle daemon keeps the plugin classes it loaded first, so it otherwise runs the old rule (and the old default config) even though the jar was rebuilt.
-
 ## Development
 
 ```shell
 ./gradlew test
 ```
+
+To try a change in another project, keep the `detektPlugins` line from [Usage](#usage) there and point Gradle at this checkout, which builds it and swaps it in for the published jar:
+
+```shell
+./gradlew detektMain --include-build ../path/to/arrow-detekt-rules
+```
+
+After changing a rule, run `./gradlew --stop` in that project before re-running detekt. Its Gradle daemon keeps the plugin classes it loaded first, so it otherwise runs the old rule (and the old default config) even though the jar was rebuilt.
 
 ### Adding a rule
 
