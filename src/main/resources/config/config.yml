@@ -3,6 +3,8 @@ arrow:
     active: true
   NoFoldBackIntoEither:
     active: true
+  NoNestedEither:
+    active: true
   PreferEitherCatch:
     active: true
   UseEnsure:

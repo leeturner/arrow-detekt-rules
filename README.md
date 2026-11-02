@@ -44,6 +44,20 @@ findUser(id).mapLeft { LookupFailed(it) }.map { it.name }
 
 `Either.Left(...)` and `.left()` count too. A side that wraps its parameter unchanged (`{ Left(it) }`) is left out of the suggestion. Not flagged: a lambda that doesn't end in a `Left`/`Right` (a fold to a value, or a `flatMap`-style one returning another Either), both sides wrapped the same way (`{ Right(default) }, { Right(it) }` is a recover), named arguments, and a `fold` that isn't Either's.
 
+### `NoNestedEither`
+
+Flags a property or function whose type, declared or inferred, is an Either inside an Either (`Either<E, Either<E, A>>`), which usually means a `map` that should be a `flatMap` or a missing `bind()`.
+
+```kotlin
+// Flagged: user has type Either<E, Either<E, String>>, an Either inside an Either. Use flatMap instead of map, or bind() the inner Either inside either { }.
+val user = findId(name).map { findUser(it) }
+
+// Fine
+val user = findId(name).flatMap { findUser(it) }
+```
+
+`Either.Right<Either<...>>` and type aliases of Either count too. Not flagged: an Either on the left (`Either<Either<E, A>, B>`), an Either inside another type (`Either<E, List<Either<E, A>>>`), and nested Eithers that are never stored in a property or returned from a function, such as a lambda's result passed straight on.
+
 ### `PreferEitherCatch`
 
 Flags Arrow's `catch({ ... }) { ... }` when the handler only raises, and suggests `Either.catch` with `mapLeft`, which turns the exception into an error at the edge.
