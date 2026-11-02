@@ -15,9 +15,9 @@ class ArrowRuleSetProviderTest {
 
     // detekt-core merges every plugin's config/config.yml into its defaults; without it every rule is off
     @Test
-    fun defaultConfigActivatesOnlyTheBugRules() {
+    fun defaultConfigActivatesEveryRule() {
         val yml = javaClass.classLoader.getResource("config/config.yml")?.readText()
 
-        assertEquals("arrow:\n  NoCatchAllInRaiseScope:\n    active: true\n  UseEnsure:\n    active: false\n  UseEnsureNotNull:\n    active: false\n", yml)
+        assertEquals("arrow:\n  NoCatchAllInRaiseScope:\n    active: true\n  UseEnsure:\n    active: true\n  UseEnsureNotNull:\n    active: true\n", yml)
     }
 }

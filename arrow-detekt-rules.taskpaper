@@ -19,15 +19,15 @@ NoCatchAllInRaiseScope:
 
 New rules:
 - PreferEitherCatch rule
-	Flag `either { catch({ ... }) { raise(f(it)) } }` and suggest `Either.catch { ... }.mapLeft(f)`. Inactive by default.
+	Flag `either { catch({ ... }) { raise(f(it)) } }` and suggest `Either.catch { ... }.mapLeft(f)`.
 	From the idea doc (https://claude.ai/artifact/B1DUsRYvotDnRQd9o25J4s, 2026-10-31), which says to build a rule once a code review finds the same pattern twice. encore-web-api had this pattern 9 times before its review.
 	Build it as "Adding a rule" in README.md describes, with a message that says what to write instead. To tell whether the raise is inside a Raise scope, use `raiseReceivers` (`Raise.kt`), as `UseEnsure` does. Raise scopes hide inside lambdas (`parMap`, `withError`, `recover`) and arrow-intellij had to fix the same kind of false positive (https://slack-chats.kotlinlang.org/t/23059856/i-got-the-following-warning-from-intellij-gt-raise-context-m), so run it over real code before relying on it (see "Run the rules over real Arrow codebases"). Match `catch` by its resolved callable id (`arrow.core.raise.catch`), not its name.
 - NoFoldBackIntoEither rule
-	Flag `.fold({ Left(f(it)) }, { Right(g(it)) })` and suggest `.mapLeft(f).map(g)`. Inactive by default.
+	Flag `.fold({ Left(f(it)) }, { Right(g(it)) })` and suggest `.mapLeft(f).map(g)`.
 	From the idea doc (https://claude.ai/artifact/B1DUsRYvotDnRQd9o25J4s, 2026-10-31), which says to build a rule once a code review finds the same pattern twice.
 	Build it as "Adding a rule" in README.md describes, with a message that says what to write instead. Match `fold` resolving to Arrow's `Either.fold`, with lambdas whose last expression builds a `Left` and a `Right` (including `.left()` and `.right()`).
 - NoNestedEither rule
-	Flag a declared or inferred `Either<E, Either<...>>`, which usually means a missing `bind()`. A likely bug rather than an idiom, so it could be active by default like NoCatchAllInRaiseScope.
+	Flag a declared or inferred `Either<E, Either<...>>`, which usually means a missing `bind()`. A likely bug rather than an idiom.
 	From the idea doc (https://claude.ai/artifact/B1DUsRYvotDnRQd9o25J4s, 2026-10-31), which says to build a rule once a code review finds the same pattern twice.
 	Build it as "Adding a rule" in README.md describes, with a message that says what to write instead. Check declared types and inferred ones (property types, function return types and the Analysis API's `expressionType`), matching `arrow.core.Either` by class id.
 
@@ -45,7 +45,7 @@ Housekeeping:
 - Run the rules over real Arrow codebases
 	So far the rule has only seen probe files and its own tests. encore-web-api has no raise calls in `src/main`, so it proves the plugin loads but not that the rule is right on real code. Run it over encore and at least one other Arrow codebase and note the false positives.
 	The likeliest sources of false positives are Raise scopes hidden inside lambdas (`parMap`, `withError`, `recover`), which arrow-intellij also had to fix (https://slack-chats.kotlinlang.org/t/23059856/i-got-the-following-warning-from-intellij-gt-raise-context-m), and the guess about which lambdas run later (see the README).
-	Use `--include-build` and run `./gradlew --stop` in the consuming project first, or its Gradle daemon runs the old rule. Do it before the first release and before switching another rule on by default.
+	Use `--include-build` and run `./gradlew --stop` in the consuming project first, or its Gradle daemon runs the old rule. Do it before the first release; every rule is on by default, so false positives reach consumers straight away.
 - Add CI with a Kotlin version matrix
 	`.github/workflows/build.yml` runs `./gradlew build` on JDK 25 for pushes to main and PRs. The Analysis API is tied to the Kotlin compiler, and people report detekt-test helpers failing after a Kotlin bump (https://slack-chats.kotlinlang.org/t/30300686/related-to-v2-again-i-am-getting-an-error-in-the-unit-tests-). The plugin compiles with Kotlin 2.4.10 while encore-web-api uses 2.4.21.
 	Still to add: a check that the plugin loads in a build on each Kotlin version consumers use. Do it before the first release.

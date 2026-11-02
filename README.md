@@ -30,7 +30,7 @@ What counts as running later is a guess:
 - Local functions and lambdas stored in a `val` are treated as running later, even when they are called straight away inside the `try` (`val t = { raise(e) }; t()`).
 - A non-inline helper that stores its lambda and returns something else is treated as running it now, so a raise inside it is flagged.
 
-### `UseEnsure` (inactive by default)
+### `UseEnsure`
 
 Flags an `if` with no `else` whose only statement is Arrow's `raise`, and says what to write instead.
 
@@ -48,7 +48,7 @@ either {
 
 Not flagged: an `if` with an `else`, a block that does more than raise, a `raise` that isn't Arrow's, and null checks (`if (x == null) raise(e)`), which `UseEnsureNotNull` covers.
 
-### `UseEnsureNotNull` (inactive by default)
+### `UseEnsureNotNull`
 
 Flags `if (x == null) raise(e)` (or `null == x`) with no `else`, and suggests `ensureNotNull(x) { e }`, which also smart-casts `x`. `x ?: raise(e)` is idiomatic Kotlin and isn't flagged.
 
@@ -64,16 +64,6 @@ either {
 }
 ```
 
-Both are idiom nudges, so turn them on in the project's detekt config:
-
-```yaml
-arrow:
-  UseEnsure:
-    active: true
-  UseEnsureNotNull:
-    active: true
-```
-
 The rules need type resolution, so they run in `detektMain` / `detektTest`, not plain `detekt`.
 
 ## Using it from a local checkout
@@ -86,11 +76,11 @@ dependencies {
 }
 ```
 
-`NoCatchAllInRaiseScope` is active by default (the jar ships `config/config.yml`). To turn it off, add this to the project's detekt config:
+Every rule is active by default (the jar ships `config/config.yml`). To turn one off, add it to the project's detekt config:
 
 ```yaml
 arrow:
-  NoCatchAllInRaiseScope:
+  UseEnsure:
     active: false
 ```
 
@@ -114,7 +104,7 @@ After changing a rule, run `./gradlew --stop` in the consuming project before re
 
 1. Write the rule in `src/main/kotlin/io/github/leeturner/arrowdetekt/`, extending `Rule` and implementing `RequiresAnalysisApi`. Arrow rules need type resolution, so they run in `detektMain` / `detektTest` only.
 2. Register it in `ArrowRuleSetProvider.instance()`.
-3. Add it to `src/main/resources/config/config.yml`: `active: true` for rules that catch bugs, `active: false` for style (idiom) rules. detekt merges this file into its defaults.
+3. Add it to `src/main/resources/config/config.yml` with `active: true`; every rule ships on by default. detekt merges this file into its defaults.
 4. Update `ArrowRuleSetProviderTest`, which pins the exact rule list and the default config.
 5. Test it the way `NoCatchAllInRaiseScopeTest` does: `lintWithContext(createEnvironment(), PRELUDE + snippet)`, with the shared `PRELUDE` from `Prelude.kt`. The test task sets `compile-test-snippets=true`, so every snippet must compile; otherwise unresolved Arrow calls make "not flagged" tests pass for the wrong reason. Arrow and kotlinx-coroutines are on the test classpath. Cover at least one flagged and one unflagged case, plus any false positives found in real code.
 6. Make the message say what to write instead, as stock detekt style rules do.

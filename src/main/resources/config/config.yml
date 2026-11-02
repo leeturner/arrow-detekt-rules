@@ -2,6 +2,6 @@ arrow:
   NoCatchAllInRaiseScope:
     active: true
   UseEnsure:
-    active: false
+    active: true
   UseEnsureNotNull:
-    active: false
+    active: true
