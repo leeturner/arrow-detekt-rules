@@ -29,7 +29,7 @@ class UseEnsure(config: Config) :
     override fun visitIfExpression(expression: KtIfExpression) {
         super.visitIfExpression(expression)
         val match = ifRaise(expression) ?: return
-        if (nullChecked(match.condition) != null) return
+        if (ensuredNotNull(match) != null) return
         val condition = if (match.raisesInElse) match.condition.text else negate(match.condition)
         val message = "Use ${match.receiver}ensure($condition) { ${match.error.text} }${match.followedBy} " +
             "instead of ${match.quoted}."

@@ -43,11 +43,6 @@ Housekeeping:
 	Still to add: a check that the plugin loads in a build on each Kotlin version consumers use. Do it before the first release.
 
 UseEnsure:
-- Flag if-raise with an else branch
-	`UseEnsure` and `UseEnsureNotNull` only flag an `if` with no else. arrow-intellij's `EnsureInspection` (https://github.com/arrow-kt/arrow-intellij) also flags `if (c) raise(e) else x` and `if (c) x else raise(e)`, and suggests `ensure` followed by the other branch's statements.
-	`ifRaise` in `Raise.kt` returns null as soon as there is an else, so it would need to check both branches and the message would need to say where the other branch goes. arrow-intellij skips the case where the raised error uses a variable the condition smart-casts; with Arrow 2.3 the suggested ensure still compiles (checked in the release review on 2026-11-02), so that guard may not be needed.
-	Pick it up if the pattern turns up in real code.
-
 Archive:
 - UseEnsure rule @done(2026-11-02 09:31)
 	Flag `if (cond) raise(e)` with no else inside a Raise scope and suggest `ensure(!cond) { e }`. An idiom nudge, so inactive by default.
@@ -69,3 +64,7 @@ Archive:
 	Flag a declared or inferred `Either<E, Either<...>>`, which usually means a missing `bind()`. A likely bug rather than an idiom.
 	From the idea doc (https://claude.ai/artifact/B1DUsRYvotDnRQd9o25J4s, 2026-10-31), which says to build a rule once a code review finds the same pattern twice.
 	Build it as "Adding a rule" in README.md describes, with a message that says what to write instead. Check declared types and inferred ones (property types, function return types and the Analysis API's `expressionType`), matching `arrow.core.Either` by class id.
+- Flag if-raise with an else branch @done(2026-11-02 14:42)
+	`UseEnsure` and `UseEnsureNotNull` only flag an `if` with no else. arrow-intellij's `EnsureInspection` (https://github.com/arrow-kt/arrow-intellij) also flags `if (c) raise(e) else x` and `if (c) x else raise(e)`, and suggests `ensure` followed by the other branch's statements.
+	`ifRaise` in `Raise.kt` returns null as soon as there is an else, so it would need to check both branches and the message would need to say where the other branch goes. arrow-intellij skips the case where the raised error uses a variable the condition smart-casts; with Arrow 2.3 the suggested ensure still compiles (checked in the release review on 2026-11-02), so that guard may not be needed.
+	Pick it up if the pattern turns up in real code.

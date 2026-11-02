@@ -19,8 +19,7 @@ class UseEnsureNotNull(config: Config) :
     override fun visitIfExpression(expression: KtIfExpression) {
         super.visitIfExpression(expression)
         val match = ifRaise(expression) ?: return
-        if (match.raisesInElse) return
-        val value = nullChecked(match.condition)?.text ?: return
+        val value = ensuredNotNull(match)?.text ?: return
         val message = "Use ${match.receiver}ensureNotNull($value) { ${match.error.text} }${match.followedBy} " +
             "instead of ${match.quoted}. It also smart-casts $value to non-null."
         report(Finding(Entity.from(expression), message))

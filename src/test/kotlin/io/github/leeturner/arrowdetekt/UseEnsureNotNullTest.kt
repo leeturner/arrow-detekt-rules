@@ -66,6 +66,32 @@ class UseEnsureNotNullTest {
     }
 
     @Test
+    fun flagsNotNullCheckWithRaiseInElse() {
+        val findings = lint("fun Raise<E>.g(x: String?) { if (x != null) println(x) else raise(E) }")
+
+        assertEquals(
+            "Use ensureNotNull(x) { E }, then the if branch, instead of if (x != null) … else raise(E). " +
+                "It also smart-casts x to non-null.",
+            findings.single().message,
+        )
+    }
+
+    @Test
+    fun flagsNullOnTheLeftWithRaiseInElse() {
+        val findings = lint("fun Raise<E>.g(x: String?) { if (null != x) println(x) else raise(E) }")
+
+        assertEquals(1, findings.size)
+    }
+
+    // raises when x is not null, so it's an ensure, not an ensureNotNull
+    @Test
+    fun ignoresEqualsNullWithRaiseInElse() {
+        val findings = lint("fun Raise<E>.g(x: String?) { if (x == null) plainCall() else raise(E) }")
+
+        assertEquals(0, findings.size)
+    }
+
+    @Test
     fun ignoresConditionThatIsNotANullCheck() {
         val findings = lint("fun Raise<E>.g(x: String?) { if (x != null) raise(E) }")
 

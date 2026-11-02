@@ -8,6 +8,7 @@ import org.jetbrains.kotlin.analysis.api.resolution.KaReceiverValue
 import org.jetbrains.kotlin.analysis.api.resolution.successfulFunctionCallOrNull
 import org.jetbrains.kotlin.analysis.api.resolution.symbol
 import org.jetbrains.kotlin.analysis.api.symbols.contextParameters
+import org.jetbrains.kotlin.lexer.KtSingleValueToken
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.psi.KtBinaryExpression
@@ -104,10 +105,14 @@ private fun isArrowRaise(call: KtCallExpression): Boolean = analyze(call) {
     resolved.symbol.callableId?.callableName?.asString() == "raise" && raiseReceivers(resolved).isNotEmpty()
 }
 
-/** `x` when [condition] is `x == null` or `null == x`, else null. */
-internal fun nullChecked(condition: KtExpression): KtExpression? {
+/** `x` when [match] raises exactly when x is null: `if (x == null) raise(e)` or `if (x != null) … else raise(e)`. */
+internal fun ensuredNotNull(match: IfRaise): KtExpression? =
+    nullChecked(match.condition, if (match.raisesInElse) KtTokens.EXCLEQ else KtTokens.EQEQ)
+
+/** `x` when [condition] is `x <operator> null` or `null <operator> x`, else null. */
+private fun nullChecked(condition: KtExpression, operator: KtSingleValueToken): KtExpression? {
     val check = condition as? KtBinaryExpression ?: return null
-    if (check.operationToken != KtTokens.EQEQ) return null
+    if (check.operationToken != operator) return null
     return when {
         check.right?.text == "null" -> check.left
         check.left?.text == "null" -> check.right

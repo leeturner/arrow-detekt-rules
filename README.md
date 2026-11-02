@@ -108,7 +108,7 @@ Not flagged: a handler that does more than raise or returns a value, a `catch` t
 
 ### `UseEnsure`
 
-Flags an `if` with no `else` whose only statement is Arrow's `raise`, and says what to write instead.
+Flags an `if` whose only statement is Arrow's `raise`, and says what to write instead. It also flags an `if` with an `else` where one branch only raises, when the `if` is a statement (including the last line of a block or lambda), a `val`/`var` initializer or a `return` value. There the fix is `ensure` followed by the other branch.
 
 ```kotlin
 // Flagged: Use ensure(!(amount > limit)) { OverLimit } instead of if (amount > limit) raise(OverLimit).
@@ -116,17 +116,24 @@ either {
     if (amount > limit) raise(OverLimit)
 }
 
+// Flagged: Use ensure(!(id < 0)) { BadId }, then the else branch, instead of if (id < 0) raise(BadId) else ….
+either {
+    val user = if (id < 0) raise(BadId) else load(id)
+}
+
 // Fine
 either {
     ensure(amount <= limit) { OverLimit }
+    ensure(id >= 0) { BadId }
+    val user = load(id)
 }
 ```
 
-Not flagged: an `if` with an `else`, a block that does more than raise, a `raise` that isn't Arrow's, and null checks (`if (x == null) raise(e)`), which `UseEnsureNotNull` covers.
+Not flagged: an `if` with an `else` anywhere else (a function argument, after `?:`, an expression body), where moving the check above the line isn't a plain rewrite; both branches raising; a block that does more than raise; a `raise` that isn't Arrow's; and null checks (`if (x == null) raise(e)`, `if (x != null) … else raise(e)`), which `UseEnsureNotNull` covers.
 
 ### `UseEnsureNotNull`
 
-Flags `if (x == null) raise(e)` (or `null == x`) with no `else`, and suggests `ensureNotNull(x) { e }`, which also smart-casts `x`. `x ?: raise(e)` is idiomatic Kotlin and isn't flagged.
+Flags `if (x == null) raise(e)` (or `null == x`), and suggests `ensureNotNull(x) { e }`, which also smart-casts `x`. With an `else`, it also flags `if (x == null) raise(e) else …` and `if (x != null) … else raise(e)` in the same places as `UseEnsure`, and suggests `ensureNotNull` followed by the other branch. `x ?: raise(e)` is idiomatic Kotlin and isn't flagged.
 
 ```kotlin
 // Flagged: Use ensureNotNull(user) { UserMissing } instead of if (user == null) raise(UserMissing). It also smart-casts user to non-null.
