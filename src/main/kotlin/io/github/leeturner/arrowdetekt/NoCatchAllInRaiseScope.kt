@@ -101,7 +101,9 @@ private fun runCatchingBody(call: KtCallExpression): KtExpression? {
             ?.asString() == "kotlin.runCatching"
     }
     if (!isRunCatching) return null
-    return call.valueArguments.firstNotNullOfOrNull { (it.getArgumentExpression() as? KtLambdaExpression)?.bodyExpression }
+    return call.valueArguments.firstNotNullOfOrNull { argument ->
+        (argument.getArgumentExpression()?.let(KtPsiUtil::safeDeparenthesize) as? KtLambdaExpression)?.bodyExpression
+    }
 }
 
 /** Like [runCatchingBody], but null when the result goes straight to `getOrThrow()`, which rethrows. */

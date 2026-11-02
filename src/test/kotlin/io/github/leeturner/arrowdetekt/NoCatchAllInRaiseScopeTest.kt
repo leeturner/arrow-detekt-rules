@@ -23,6 +23,13 @@ class NoCatchAllInRaiseScopeTest {
     }
 
     @Test
+    fun flagsLabelledRunCatching() {
+        val findings = lint("fun f() = either<E, String?> { runCatching block@{ findUser(1).bind() }.getOrNull() }")
+
+        assertEquals(1, findings.size)
+    }
+
+    @Test
     fun flagsReceiverRunCatching() {
         val findings = lint("fun f() = either<E, String?> { 1.runCatching { findUser(this).bind() }.getOrNull() }")
 
