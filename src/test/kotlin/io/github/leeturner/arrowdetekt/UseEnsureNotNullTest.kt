@@ -55,8 +55,48 @@ class UseEnsureNotNullTest {
     }
 
     @Test
-    fun ignoresIfWithElse() {
-        val findings = lint("fun Raise<E>.g(x: String?) { if (x == null) raise(E) else plainCall() }")
+    fun flagsNullCheckWithElse() {
+        val findings = lint("fun Raise<E>.g(x: String?) { if (x == null) raise(E) else println(x) }")
+
+        assertEquals(
+            "Use ensureNotNull(x) { E }, then the else branch, instead of if (x == null) raise(E) else …. " +
+                "It also smart-casts x to non-null.",
+            findings.single().message,
+        )
+    }
+
+    @Test
+    fun flagsNotNullCheckWithRaiseInElse() {
+        val findings = lint("fun Raise<E>.g(x: String?) { if (x != null) println(x) else raise(E) }")
+
+        assertEquals(
+            "Use ensureNotNull(x) { E }, then the if branch, instead of if (x != null) … else raise(E). " +
+                "It also smart-casts x to non-null.",
+            findings.single().message,
+        )
+    }
+
+    @Test
+    fun flagsWhenOtherBranchHasSeveralStatements() {
+        val findings = lint(
+            "fun Raise<E>.g(x: String?) { if (x != null) { println(x); println(x) } else raise(E); " +
+                "if (x == null) raise(E) else { println(x); println(x) } }",
+        )
+
+        assertEquals(2, findings.size)
+    }
+
+    @Test
+    fun flagsNullOnTheLeftWithRaiseInElse() {
+        val findings = lint("fun Raise<E>.g(x: String?) { if (null != x) println(x) else raise(E) }")
+
+        assertEquals(1, findings.size)
+    }
+
+    // raises when x is not null, so it's an ensure, not an ensureNotNull
+    @Test
+    fun ignoresEqualsNullWithRaiseInElse() {
+        val findings = lint("fun Raise<E>.g(x: String?) { if (x == null) plainCall() else raise(E) }")
 
         assertEquals(0, findings.size)
     }
