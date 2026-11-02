@@ -6,9 +6,11 @@ import dev.detekt.api.Finding
 import dev.detekt.api.RequiresAnalysisApi
 import dev.detekt.api.Rule
 import org.jetbrains.kotlin.lexer.KtTokens
+import org.jetbrains.kotlin.psi.KtBinaryExpression
 import org.jetbrains.kotlin.psi.KtCallExpression
 import org.jetbrains.kotlin.psi.KtExpression
 import org.jetbrains.kotlin.psi.KtIfExpression
+import org.jetbrains.kotlin.psi.KtIsExpression
 import org.jetbrains.kotlin.psi.KtParenthesizedExpression
 import org.jetbrains.kotlin.psi.KtPrefixExpression
 import org.jetbrains.kotlin.psi.KtPsiUtil
@@ -19,6 +21,8 @@ import org.jetbrains.kotlin.psi.KtSimpleNameExpression
  * Flags `if (cond) raise(e)` and suggests `ensure(!cond) { e }`. Also flags `if (cond) raise(e) else x` and
  * `if (cond) x else raise(e)` when the `if` is a statement, a `val`/`var` initializer or a `return` value, and
  * suggests `ensure` followed by the other branch.
+ *
+ * Not when the other branch throws, or the error relies on a smart cast from the `if`, which `ensure`'s lambda loses.
  *
  * Null checks (`if (x == null) raise(e)`) are left to [UseEnsureNotNull].
  */
@@ -40,7 +44,18 @@ class UseEnsure(config: Config) :
 private fun negate(condition: KtExpression): String = when (condition) {
     is KtPrefixExpression if condition.operationToken == KtTokens.EXCL ->
         condition.baseExpression?.let { KtPsiUtil.safeDeparenthesize(it).text } ?: "!${condition.text}"
+    is KtBinaryExpression if condition.operationToken in FLIPPED ->
+        "${condition.left?.text} ${FLIPPED[condition.operationToken]} ${condition.right?.text}"
+    is KtIsExpression -> "${condition.leftHandSide.text} ${if (condition.isNegated) "is" else "!is"} ${condition.typeReference?.text}"
     is KtSimpleNameExpression, is KtCallExpression, is KtQualifiedExpression, is KtParenthesizedExpression ->
         "!${condition.text}"
     else -> "!(${condition.text})"
 }
+
+// Operators whose negation is another operator, by definition: `a != b` is `!(a == b)`. Comparisons aren't here,
+// since `!(a > b)` isn't `a <= b` when either is NaN.
+private val FLIPPED = mapOf(
+    KtTokens.EQEQ to "!=", KtTokens.EXCLEQ to "==", KtTokens.EQEQEQ to "!==", KtTokens.EXCLEQEQEQ to "===",
+    KtTokens.IN_KEYWORD to "!in", KtTokens.NOT_IN to "in",
+)
+

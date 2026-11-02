@@ -52,7 +52,7 @@ either {
 }
 ```
 
-Not flagged: narrow catches (`IOException`), catches that always rethrow the raise (`throw e`, `e.nonFatalOrThrow()`, `if (e is CancellationException) throw e`), `runCatching { ... }.getOrThrow()`, Raise scopes opened inside the catch-all, and raises in code that runs later rather than inside the `try`. When catch-alls nest, only the innermost one is reported.
+Not flagged: narrow catches (`IOException`), catches that always rethrow the raise (`throw e`, `e.nonFatalOrThrow()`, `if (e is CancellationException) throw e`, `if (e is MyError) raise(e) else throw e`), `runCatching { ... }.getOrThrow()`, Raise scopes opened inside the catch-all, and raises in code that runs later rather than inside the `try`. When catch-alls nest, only the innermost one is reported.
 
 What counts as running later is a guess:
 
@@ -106,7 +106,7 @@ either {
 }
 ```
 
-Statements in nested lambdas (`forEach { findUser(it) }`), local functions and `if`/`when` branches count too, and so does a statement ending in `onLeft { }`, which logs the error but still drops it. Not flagged: values that are bound, stored, returned, passed on or handled (`getOrElse`, `fold`), `kotlin.Result` (`runCatching { cleanup() }` on its own line is usually a deliberate discard), and anything outside a Raise scope. For that last case, see Kotlin's unused return value checker (`-Xreturn-value-checker`).
+Statements in nested lambdas (`forEach { findUser(it) }`), local functions and `if`/`when` branches count too, and so does a statement ending in `onLeft { }`, which logs the error but still drops it. Not flagged: values that are bound, stored, returned, passed on or handled (`getOrElse`, `fold`), a peek (`onRight`, `onLeft`, `onSome`, `onNone`) on a variable or parameter that is used again later (`r.onRight { log(it) }; r.bind()`), `kotlin.Result` (`runCatching { cleanup() }` on its own line is usually a deliberate discard), and anything outside a Raise scope. For that last case, see Kotlin's unused return value checker (`-Xreturn-value-checker`).
 
 ### `PreferEitherCatch`
 
@@ -149,7 +149,9 @@ either {
 }
 ```
 
-Not flagged: an `if` with an `else` anywhere else (a function argument, after `?:`, an expression body), where moving the check above the line isn't a plain rewrite; both branches raising; a block that does more than raise; a `raise` that isn't Arrow's; and null checks (`if (x == null) raise(e)`, `if (x != null) … else raise(e)`), which `UseEnsureNotNull` covers.
+If the `if` block holds a comment explaining the raise, move it above the `ensure` line so it isn't lost.
+
+Not flagged: an `if` with an `else` anywhere else (a function argument, after `?:`, an expression body), where moving the check above the line isn't a plain rewrite; both branches raising; one branch raising and the other throwing (`if (c) raise(e) else throw x`); an error that relies on a smart cast from the `if` (`if (e is MyError) raise(e)`), which doesn't reach `ensure`'s lambda; a block that does more than raise; a `raise` that isn't Arrow's; and null checks (`if (x == null) raise(e)`, `if (x != null) … else raise(e)`), which `UseEnsureNotNull` covers.
 
 ### `UseEnsureNotNull`
 

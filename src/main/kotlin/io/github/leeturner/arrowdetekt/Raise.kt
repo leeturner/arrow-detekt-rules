@@ -20,6 +20,8 @@ import org.jetbrains.kotlin.psi.KtIfExpression
 import org.jetbrains.kotlin.psi.KtProperty
 import org.jetbrains.kotlin.psi.KtQualifiedExpression
 import org.jetbrains.kotlin.psi.KtReturnExpression
+import org.jetbrains.kotlin.psi.KtThrowExpression
+import org.jetbrains.kotlin.psi.psiUtil.collectDescendantsOfType
 
 internal val RAISE = ClassId.fromString("arrow/core/raise/Raise")
 
@@ -60,7 +62,16 @@ internal class IfRaise(
  * `if (c) raise(e)`, `if (c) raise(e) else x` or `if (c) x else raise(e)`. With an else, only when the `if` is a
  * statement, a `val`/`var` initializer or a `return` value, where `ensure` then the other branch is a plain rewrite.
  */
-internal fun ifRaise(expression: KtIfExpression): IfRaise? {
+internal fun ifRaise(expression: KtIfExpression): IfRaise? = matchIfRaise(expression)?.takeUnless { needsSmartCast(it.error) }
+
+// Inside ensure's lambda the error loses any smart cast the if gave it: `if (e is G) raise(e)` becomes
+// `ensure(e !is G) { e }`, where e is no longer a G.
+// ponytail: also skips smart casts made before the if, which would survive into the lambda
+private fun needsSmartCast(error: KtExpression): Boolean = analyze(error) {
+    (error.collectDescendantsOfType<KtExpression>() + error).any { it.smartCastInfo != null }
+}
+
+private fun matchIfRaise(expression: KtIfExpression): IfRaise? {
     val condition = expression.condition ?: return null
     // only the raising branch has to be a single statement; the other can be any block
     val then = expression.then?.let(::single)
@@ -74,6 +85,8 @@ internal fun ifRaise(expression: KtIfExpression): IfRaise? {
     val elseError = otherwise?.let(::raisedError)
     return when {
         thenError != null && elseError != null -> null
+        // raise one way, throw the other: a two-way error split, not a guard, and ensure then a bare throw reads worse
+        then is KtThrowExpression || otherwise is KtThrowExpression -> null
         then != null && thenError != null -> IfRaise(
             condition, receiverOf(then), thenError, false,
             "if (${condition.text}) ${then.text} else …", ", then the else branch,",

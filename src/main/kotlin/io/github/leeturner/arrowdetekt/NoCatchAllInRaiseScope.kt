@@ -41,6 +41,7 @@ import org.jetbrains.kotlin.psi.KtThrowExpression
 import org.jetbrains.kotlin.psi.KtTryExpression
 import org.jetbrains.kotlin.psi.KtTypeReference
 import org.jetbrains.kotlin.psi.KtValueArgument
+import org.jetbrains.kotlin.psi.KtWhenCondition
 import org.jetbrains.kotlin.psi.KtWhenConditionIsPattern
 import org.jetbrains.kotlin.psi.KtWhenConditionWithExpression
 import org.jetbrains.kotlin.psi.KtWhenExpression
@@ -126,18 +127,22 @@ private fun swallowsRaise(clause: KtCatchClause): Boolean =
 private fun coversRaise(typeReference: KtTypeReference): Boolean =
     analyze(typeReference) { buildClassType(RAISE_CANCELLATION).isSubtypeOf(typeReference.type) }
 
-// Only rethrows that always run for the raise count: a direct statement of the catch block, or one
-// guarded by `if (e is T)` where T covers the raise. A throw in some other branch or a lambda doesn't.
+// Only rethrows that always run for the raise count: a direct statement of the catch block, or one in
+// the if/when branch the raise takes. A throw in some other branch or a lambda doesn't.
 private fun rethrows(clause: KtCatchClause): Boolean {
     val name = clause.catchParameter?.name ?: return false
-    val statements = (clause.catchBody as? KtBlockExpression)?.statements ?: return false
-    return statements.any { rethrowsDirectly(it, name) || rethrowsWhenRaise(it, name) }
+    return rethrowsIn(clause.catchBody, name)
+}
+
+private fun rethrowsIn(body: KtExpression?, name: String): Boolean = when (body) {
+    is KtBlockExpression -> body.statements.any { rethrowsIn(it, name) }
+    null -> false
+    else -> rethrowsDirectly(body, name) || rethrowsWhenRaise(body, name)
 }
 
 // ponytail: matches the exception by name; aliasing it through a val isn't followed
 private fun rethrowsDirectly(statement: KtExpression?, name: String): Boolean = when (statement) {
     is KtThrowExpression -> statement.thrownExpression?.text == name
-    is KtBlockExpression -> rethrowsDirectly(statement.statements.singleOrNull(), name)
     is KtDotQualifiedExpression -> statement.receiverExpression.text == name && rethrowsThroughSelector(statement)
     else -> false
 }
@@ -156,25 +161,44 @@ private fun rethrowsThroughSelector(expression: KtDotQualifiedExpression): Boole
     return block.statements.any { rethrowsDirectly(it, alias) }
 }
 
-// `if (e is T) throw e`, `when (e) { is T -> throw e }` or `when { e is T -> throw e }`, with T covering the raise
+// An if or when on `e is T` / `e !is T` rethrows in the branch the raise takes. RaiseCancellationException
+// is sealed and its subclasses implement nothing else, so a T that doesn't cover it doesn't match it:
+// `if (e is GitError) raise(e) else throw e`. A condition that isn't such a check could send the raise
+// anywhere, so it doesn't count.
+// ponytail: `e is Traced` (one of its own subclasses) is treated as never matching; nobody checks for it
 private fun rethrowsWhenRaise(statement: KtExpression, name: String): Boolean = when (statement) {
-    is KtIfExpression -> isRaiseCheck(statement.condition, name) && rethrowsDirectly(statement.then, name)
-    is KtWhenExpression -> statement.entries.any { entry ->
-        rethrowsDirectly(entry.expression, name) && entry.conditions.any { condition ->
-            when (condition) {
-                is KtWhenConditionIsPattern -> statement.subjectExpression?.text == name && !condition.isNegated &&
-                    condition.typeReference?.let(::coversRaise) == true
-                is KtWhenConditionWithExpression -> isRaiseCheck(condition.expression, name)
-                else -> false
-            }
-        }
+    is KtIfExpression -> when (raiseMatches(statement.condition, name)) {
+        true -> rethrowsIn(statement.then, name)
+        false -> rethrowsIn(statement.`else`, name)
+        null -> false
     }
+    is KtWhenExpression -> whenRethrows(statement, name)
     else -> false
 }
 
-private fun isRaiseCheck(condition: KtExpression?, name: String): Boolean {
-    val check = condition as? KtIsExpression ?: return false
-    return !check.isNegated && check.leftHandSide.text == name && check.typeReference?.let(::coversRaise) == true
+// The raise takes the first entry it matches; an entry it might match ends the search
+private fun whenRethrows(expression: KtWhenExpression, name: String): Boolean {
+    val subject = expression.subjectExpression?.text
+    for (entry in expression.entries) {
+        val results = entry.conditions.map { raiseMatches(it, subject, name) }
+        if (entry.isElse || true in results) return rethrowsIn(entry.expression, name)
+        if (null in results) return false
+    }
+    return false
+}
+
+private fun raiseMatches(condition: KtWhenCondition, subject: String?, name: String): Boolean? = when (condition) {
+    is KtWhenConditionIsPattern -> condition.typeReference?.takeIf { subject == name }
+        ?.let { coversRaise(it) != condition.isNegated }
+    is KtWhenConditionWithExpression -> raiseMatches(condition.expression, name)
+    else -> null
+}
+
+// Whether the raise passes [condition]: known only for `e is T` and `e !is T`, null otherwise
+private fun raiseMatches(condition: KtExpression?, name: String): Boolean? {
+    val check = condition as? KtIsExpression ?: return null
+    if (check.leftHandSide.text != name) return null
+    return check.typeReference?.let { coversRaise(it) != check.isNegated }
 }
 
 // ---- Raising calls ---------------------------------------------------------------------------
