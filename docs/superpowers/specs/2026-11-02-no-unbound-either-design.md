@@ -16,7 +16,7 @@ An expression whose value is never used, whose type is a bindable Arrow type, an
 Not flagged:
 
 - A bare bindable outside any Raise scope. That case is left to Kotlin 2.3's unused return value checker (`-Xreturn-value-checker`).
-- A value that is bound, stored, returned, passed on or handled (`.bind()`, `val x = …`, `.getOrElse { }`, `.onLeft { }`).
+- A value that is bound, stored, returned, passed on or handled (`.bind()`, `val x = …`, `.getOrElse { }`). `.onLeft { }` and `.onSome { }` still pass the Either on, so a statement ending in them is flagged: the fix is `.onLeft { … }.bind()`.
 - `kotlin.Result`. Wolt flags it, but `runCatching { cleanup() }` on its own line is a common deliberate discard, and `bind()` on a Result only works inside `result { }`.
 
 ## Message

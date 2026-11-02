@@ -4,7 +4,7 @@
 
 **Goal:** A new rule, `NoUnboundEither`, flags an Either, Option, Ior or Effect whose value is dropped as a statement while a Raise is in scope.
 
-**Architecture:** One rule file. It overrides `visitExpression` and only looks at statement-shaped expressions (whole statements and `if`/`when` branches), so a chain is reported once. Each check runs in an `analyze` block, cheapest first: the value is unused (`isUsedAsExpression`), the type is bindable, the expression isn't an `onLeft`-style side-effect call, and a Raise is among the implicit values in scope (`scopeContext`).
+**Architecture:** One rule file. It overrides `visitExpression` and only looks at statement-shaped expressions (whole statements and `if`/`when` branches), so a chain is reported once. Each check runs in an `analyze` block, cheapest first: the value is unused (`isUsedAsExpression`), the type is bindable, and a Raise is among the implicit values in scope (`scopeContext`).
 
 **Tech Stack:** Kotlin, detekt 2 alpha (`detekt-api`, `detekt-test`), Kotlin Analysis API, Arrow core (tests).
 
@@ -22,7 +22,7 @@
 ## Review Focus
 
 1. `raise(E)` and `TODO()` statements have type `Nothing`, which is a subtype of Either. They must not be flagged, and they appear in almost every Raise scope. Test `ignoresNothingStatements` in Task 1.
-2. `findUser(1).onLeft { println(it) }` returns an Either but is a deliberate side effect, so the spec says it isn't flagged. Test `ignoresOnLeftSideEffect` in Task 1.
+2. `findUser(1).onLeft { println(it) }` passes the Either on, so it is flagged: the error is logged but still dropped. Test `flagsOnLeftSideEffect` in Task 1.
 3. A local function inside `either { }` still sees the Raise, so the spec counts it. Test `flagsInsideLocalFunction` in Task 1.
 4. A `when` branch used as a statement is flagged the same way as an `if` branch. Covered in `flagsIfAndWhenBranches` in Task 1.
 5. `if (c) findUser(1) else findUser(2)` as a statement gives two findings, not three: the `if` itself is unused and has type Either too. Test `reportsBranchesNotTheIfAroundThem` in Task 1.
@@ -119,6 +119,12 @@ fun flagsIfAndWhenBranches() {
     assertEquals(3, findings.size)
 }
 
+// onLeft passes the Either on, so the error is still dropped
+@Test
+fun flagsOnLeftSideEffect() {
+    assertEquals(1, lint("fun f() = either<E, Int> { findUser(1).onLeft { println(it) }; 1 }").size)
+}
+
 // The if itself has type Either and is unused too; only its branches are reported
 @Test
 fun reportsBranchesNotTheIfAroundThem() {
@@ -139,7 +145,6 @@ Not flagged (each asserts `0` findings):
 ignoresBound:                "fun f() = either<E, Int> { findUser(1).bind(); 1 }"
 ignoresStored:               "fun f() = either<E, Int> { val u = findUser(1); u.bind().length }"
 ignoresFolded:               "fun f() = either<E, Int> { findUser(1).fold({ 0 }, { it.length }); 1 }"
-ignoresOnLeftSideEffect:     "fun f() = either<E, Int> { findUser(1).onLeft { println(it) }; 1 }"
 ignoresReturnedAsValue:      "fun f() = either<E, _> { findUser(1) }"
 ignoresLambdaResult:         "fun f() = either<E, Int> { val load = { findUser(1) }; load().bind().length }"
 ignoresOutsideRaiseScope:    "fun g() { findUser(1) }"
@@ -158,10 +163,9 @@ Expected: compilation fails with an unresolved reference to `NoUnboundEither`.
 
 `override fun visitExpression(expression: KtExpression)`: call `super`, then only consider `expression` when its parent is a `KtBlockExpression`, `KtContainerNodeForControlStructureBody` (`if` branch without braces) or `KtWhenEntry`. Skip `KtBlockExpression`, `KtIfExpression`, `KtWhenExpression` and `KtTryExpression` themselves: their branches are visited anyway and give a better message. Then, in one `analyze(expression)` block, return early unless all of these hold, checked in this order:
 
-1. `bindableName(expression.expressionType)` is not null. This runs first because declarations (`KtProperty`, `KtNamedFunction`) also reach `visitExpression` with a block parent, and their null `expressionType` stops them here.
-2. `!expression.isUsedAsExpression` This is a private `KaSession.bindableName(type: KaType?): String?` that returns null for `Nothing` (`isNothingType`), `"Either"`/`"Option"`/`"Ior"` when `type.isSubtypeOf(classId)`, `"Effect"` when the type is a `KaFunctionType` whose `receiverType` is a subtype of `RAISE`, and otherwise null.
-3. The resolved call of the expression (the selector for a qualified expression) isn't a function in package `arrow.core` named `onLeft`, `onRight`, `onBoth`, `onSome` or `onNone`.
-4. `expression.containingKtFile.scopeContext(expression).implicitValues.any { it.type.isSubtypeOf(RAISE) }`
+1. `bindableName(expression.expressionType)` is not null. This is a private `KaSession.bindableName(type: KaType?): String?` that returns null for `Nothing` (`isNothingType`), `"Either"`/`"Option"`/`"Ior"` when `type.isSubtypeOf(classId)`, `"Effect"` when the type is a `KaFunctionType` whose `receiverType` is a subtype of `RAISE`, and otherwise null. This runs first because declarations (`KtProperty`, `KtNamedFunction`) also reach `visitExpression` with a block parent, and their null `expressionType` stops them here.
+2. `!expression.isUsedAsExpression`
+3. `expression.containingKtFile.scopeContext(expression).implicitValues.any { it.type.isSubtypeOf(RAISE) }`
 
 Report `Finding(Entity.from(expression), message)` with the message from Global Constraints.
 
@@ -182,7 +186,7 @@ Expected: BUILD SUCCESSFUL, every test passing.
 
 - [ ] **Step 6: Add the README entry**
 
-Add a `### NoUnboundEither` section after `### NoNestedEither`. Follow the other rules' format: one sentence on what it flags, a flagged and a fine `either { }` example with the real message in the comment, then a "Not flagged" paragraph. That paragraph lists outside a Raise scope (and Kotlin 2.3's `-Xreturn-value-checker` for that case), bound, stored, returned or handled values, `onLeft`/`onRight`/`onSome`/`onNone` side effects, and `kotlin.Result`.
+Add a `### NoUnboundEither` section after `### NoNestedEither`. Follow the other rules' format: one sentence on what it flags, a flagged and a fine `either { }` example with the real message in the comment, then a "Not flagged" paragraph. That paragraph lists outside a Raise scope (and Kotlin 2.3's `-Xreturn-value-checker` for that case), bound, stored, returned or handled values, and `kotlin.Result`.
 
 - [ ] **Step 7: Archive the backlog item**
 
