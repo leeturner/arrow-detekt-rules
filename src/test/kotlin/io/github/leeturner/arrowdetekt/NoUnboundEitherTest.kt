@@ -89,6 +89,43 @@ class NoUnboundEitherTest {
         assertEquals(1, lint("fun f() = either<E, Int> { findUser(1).onLeft { println(it) }; 1 }").size)
     }
 
+    // onRight returns r unchanged, and r is bound afterwards, so nothing is dropped
+    @Test
+    fun ignoresPeekOnVariableBoundLater() {
+        assertEquals(0, lint("fun f() = either<E, Int> { val r = findUser(1); r.onRight { println(it) }; r.bind(); 1 }").size)
+    }
+
+    @Test
+    fun ignoresPeekOnVariableReturnedLater() {
+        assertEquals(0, lint("fun Raise<E>.g(): Either<E, String> { val r = findUser(1); r.onLeft { println(it) }; return r }").size)
+    }
+
+    @Test
+    fun ignoresPeekOnParameterBoundLater() {
+        assertEquals(0, lint("fun Raise<E>.g(r: Either<E, String>) { r.onRight { println(it) }; r.bind() }").size)
+    }
+
+    @Test
+    fun ignoresChainedPeeksOnVariableBoundLater() {
+        assertEquals(0, lint("fun Raise<E>.g(r: Either<E, String>) { r.onRight { println(it) }.onLeft { println(it) }; r.bind() }").size)
+    }
+
+    @Test
+    fun flagsPeekOnVariableNeverUsedAgain() {
+        assertEquals(1, lint("fun f() = either<E, Int> { val r = findUser(1); r.onRight { println(it) }; 1 }").size)
+    }
+
+    @Test
+    fun flagsPeekOnVariableUsedOnlyBefore() {
+        assertEquals(1, lint("fun f() = either<E, Int> { val r = findUser(1); println(r); r.onRight { println(it) }; 1 }").size)
+    }
+
+    // map isn't a peek: its result is a different Either
+    @Test
+    fun flagsMapOnVariableBoundLater() {
+        assertEquals(1, lint("fun f() = either<E, Int> { val r = findUser(1); r.map { it.length }; r.bind(); 1 }").size)
+    }
+
     // The if itself has type Either and is unused too; only its branches are reported
     @Test
     fun reportsBranchesNotTheIfAroundThem() {

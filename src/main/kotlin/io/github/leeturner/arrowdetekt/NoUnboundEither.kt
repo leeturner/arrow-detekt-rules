@@ -8,6 +8,9 @@ import dev.detekt.api.Rule
 import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
 import org.jetbrains.kotlin.analysis.api.analyze
+import org.jetbrains.kotlin.analysis.api.resolution.successfulFunctionCallOrNull
+import org.jetbrains.kotlin.analysis.api.resolution.symbol
+import org.jetbrains.kotlin.idea.references.mainReference
 import org.jetbrains.kotlin.analysis.api.types.KaFunctionType
 import org.jetbrains.kotlin.analysis.api.types.KaType
 import org.jetbrains.kotlin.name.ClassId
@@ -23,6 +26,7 @@ import org.jetbrains.kotlin.psi.KtQualifiedExpression
 import org.jetbrains.kotlin.psi.KtTryExpression
 import org.jetbrains.kotlin.psi.KtWhenEntry
 import org.jetbrains.kotlin.psi.KtWhenExpression
+import org.jetbrains.kotlin.psi.psiUtil.collectDescendantsOfType
 
 private val BINDABLE = listOf("Either", "Option", "Ior").map { it to ClassId.fromString("arrow/core/$it") }
 
@@ -40,7 +44,7 @@ class NoUnboundEither(config: Config) :
         val message = analyze(expression) {
             val type = expression.expressionType ?: return@analyze null
             bindableName(type)
-                ?.takeIf { !expression.isUsedAsExpression }
+                ?.takeIf { !expression.isUsedAsExpression && !peeksAtValueUsedLater(expression) }
                 ?.takeIf { expression.containingKtFile.scopeContext(expression).implicitValues.any { it.type.isSubtypeOf(RAISE) } }
                 ?.let { message(it, expression, if (type.isNullable) "?.bind()" else ".bind()") }
         } ?: return
@@ -65,3 +69,22 @@ private fun KaSession.bindableName(type: KaType): String? = when {
     type is KaFunctionType && type.receiverType?.isSubtypeOf(RAISE) == true -> "Effect"
     else -> BINDABLE.firstOrNull { (_, id) -> type.isSubtypeOf(id) }?.first
 }
+
+private val PEEKS = setOf("arrow.core.Either.onRight", "arrow.core.Either.onLeft", "arrow.core.Option.onSome", "arrow.core.Option.onNone")
+
+// `r.onRight { }` hands back r itself, so when r is used later its error isn't dropped here
+private fun KaSession.peeksAtValueUsedLater(expression: KtExpression): Boolean {
+    var receiver = expression
+    while (receiver is KtQualifiedExpression && isPeek(receiver)) receiver = receiver.receiverExpression
+    if (receiver === expression || receiver !is KtNameReferenceExpression) return false
+    val name = receiver.getReferencedName()
+    val symbol = receiver.mainReference.resolveToSymbol() ?: return false
+    return expression.containingKtFile.collectDescendantsOfType<KtNameReferenceExpression> {
+        it.textOffset > expression.textRange.endOffset && it.getReferencedName() == name
+    }.any { it.mainReference.resolveToSymbol() == symbol }
+}
+
+private fun KaSession.isPeek(call: KtQualifiedExpression): Boolean =
+    (call.selectorExpression as? KtCallExpression)?.resolveToCall()?.successfulFunctionCallOrNull()
+        ?.symbol?.callableId?.asSingleFqName()?.asString() in PEEKS
+

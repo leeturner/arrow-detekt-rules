@@ -106,7 +106,7 @@ either {
 }
 ```
 
-Statements in nested lambdas (`forEach { findUser(it) }`), local functions and `if`/`when` branches count too, and so does a statement ending in `onLeft { }`, which logs the error but still drops it. Not flagged: values that are bound, stored, returned, passed on or handled (`getOrElse`, `fold`), `kotlin.Result` (`runCatching { cleanup() }` on its own line is usually a deliberate discard), and anything outside a Raise scope. For that last case, see Kotlin's unused return value checker (`-Xreturn-value-checker`).
+Statements in nested lambdas (`forEach { findUser(it) }`), local functions and `if`/`when` branches count too, and so does a statement ending in `onLeft { }`, which logs the error but still drops it. Not flagged: values that are bound, stored, returned, passed on or handled (`getOrElse`, `fold`), a peek (`onRight`, `onLeft`, `onSome`, `onNone`) on a variable or parameter that is used again later (`r.onRight { log(it) }; r.bind()`), `kotlin.Result` (`runCatching { cleanup() }` on its own line is usually a deliberate discard), and anything outside a Raise scope. For that last case, see Kotlin's unused return value checker (`-Xreturn-value-checker`).
 
 ### `PreferEitherCatch`
 
