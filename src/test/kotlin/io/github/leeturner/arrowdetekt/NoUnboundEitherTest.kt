@@ -105,6 +105,36 @@ class NoUnboundEitherTest {
     }
 
     @Test
+    fun suggestsSafeBindForNullable() {
+        val findings = lint("fun Raise<E>.g(id: Int?) { id?.let { findUser(it) } }")
+
+        assertEquals("Use id?.let { findUser(it) }?.bind() instead.", findings.single().message.substringAfter("dropped. "))
+    }
+
+    // .bind() on the end would bind only raise(E)
+    @Test
+    fun wrapsOperatorExpressionInParentheses() {
+        val findings = lint("fun Raise<E>.g(a: Either<E, String>?) { a ?: raise(E) }")
+
+        assertEquals("Use (a ?: raise(E)).bind() instead.", findings.single().message.substringAfter("dropped. "))
+    }
+
+    @Test
+    fun quotesFirstLineOfMultiLineChain() {
+        val findings = lint(
+            """
+            fun f() = either<E, Int> {
+                findUser(1)
+                    .map { it.length }
+                1
+            }
+            """.trimIndent(),
+        )
+
+        assertEquals("The Either from findUser(1)… is never bound, so its error is dropped. Add .bind() to the end.", findings.single().message)
+    }
+
+    @Test
     fun ignoresBound() {
         assertEquals(0, lint("fun f() = either<E, Int> { findUser(1).bind(); 1 }").size)
     }
