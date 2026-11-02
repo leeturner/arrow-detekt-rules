@@ -56,8 +56,8 @@ Not flagged: narrow catches (`IOException`), catches that always rethrow the rai
 
 What counts as running later is a guess:
 
-- A lambda passed as an argument is assumed to run during the call (`forEach`, `withContext`, `coroutineScope`, `transaction`), unless the call returns something that holds on to it: a `Sequence`, `Flow`, `Lazy` or function. So `asSequence().map { it.bind() }` and `lazy { raise(e) }` are not flagged.
-- Local functions and lambdas stored in a `val` are treated as running later, even when they are called straight away inside the `try` (`val t = { raise(e) }; t()`).
+- A lambda passed as an argument is assumed to run during the call (`forEach`, `withContext`, `coroutineScope`, `transaction`), unless the call returns something that holds on to it: a `Sequence`, `Flow`, `Lazy` or function. So `asSequence().map { it.bind() }` and `lazy { raise(e) }` are not flagged. A lambda passed to a `crossinline` parameter gets the same guess, since the inline function may store it.
+- Local functions, property getters and setters in local classes and objects, and lambdas stored in a `val` are treated as running later, even when they are called straight away inside the `try` (`val t = { raise(e) }; t()`).
 - A non-inline helper that stores its lambda and returns something else is treated as running it now, so a raise inside it is flagged.
 
 ### `NoFoldBackIntoEither`
