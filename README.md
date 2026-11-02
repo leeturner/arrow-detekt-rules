@@ -52,7 +52,7 @@ either {
 }
 ```
 
-Not flagged: narrow catches (`IOException`), catches that always rethrow the raise (`throw e`, `e.nonFatalOrThrow()`, `if (e is CancellationException) throw e`), `runCatching { ... }.getOrThrow()`, Raise scopes opened inside the catch-all, and raises in code that runs later rather than inside the `try`. When catch-alls nest, only the innermost one is reported.
+Not flagged: narrow catches (`IOException`), catches that always rethrow the raise (`throw e`, `e.nonFatalOrThrow()`, `if (e is CancellationException) throw e`, `if (e is MyError) raise(e) else throw e`), `runCatching { ... }.getOrThrow()`, Raise scopes opened inside the catch-all, and raises in code that runs later rather than inside the `try`. When catch-alls nest, only the innermost one is reported.
 
 What counts as running later is a guess:
 

@@ -171,6 +171,57 @@ class NoCatchAllInRaiseScopeTest {
         assertEquals(0, findings.size)
     }
 
+    // G is an interface, so the raise is never a G and takes the else branch
+    @Test
+    fun ignoresRethrowInElseOfUnrelatedTypeCheck() {
+        val findings = lint(
+            "interface G\nobject K : G\n" +
+                "fun Raise<G>.f(): Int = try { raise(K) } catch (e: Exception) { if (e is G) raise(e) else throw e }",
+        )
+
+        assertEquals(0, findings.size)
+    }
+
+    @Test
+    fun ignoresRethrowInWhenElseAfterUnrelatedType() {
+        val findings = lint(
+            "interface G\nobject K : G\n" +
+                "fun Raise<G>.f(): Int = try { raise(K) } catch (e: Exception) { when (e) { is G -> raise(e); else -> throw e } }",
+        )
+
+        assertEquals(0, findings.size)
+    }
+
+    @Test
+    fun flagsUnrelatedTypeCheckWhoseElseSwallows() {
+        val findings = lint(
+            "interface G\nobject K : G\n" +
+                "fun Raise<G>.f(): Int = try { raise(K) } catch (e: Exception) { if (e is G) raise(e) else -1 }",
+        )
+
+        assertEquals(1, findings.size)
+    }
+
+    @Test
+    fun ignoresGuardedRethrowAfterOtherStatements() {
+        val findings = lint(
+            "fun f() = either<E, Unit> { try { raise(E) } catch (e: Exception) { if (e is CancellationException) { println(e); throw e } } }",
+        )
+
+        assertEquals(0, findings.size)
+    }
+
+    // the raise matches the first entry, so the later rethrow never runs for it
+    @Test
+    fun flagsRethrowAfterAnEntryThatCatchesTheRaise() {
+        val findings = lint(
+            "fun f() = either<E, Unit> { try { raise(E) } catch (e: Exception) { " +
+                "when (e) { is IllegalStateException -> {}; is CancellationException -> throw e } } }",
+        )
+
+        assertEquals(1, findings.size)
+    }
+
     @Test
     fun runCatchingMessageDoesNotSuggestNonFatalOrThrow() {
         val findings = lint("fun f() = either<E, String?> { runCatching { findUser(1).bind() }.getOrNull() }")
