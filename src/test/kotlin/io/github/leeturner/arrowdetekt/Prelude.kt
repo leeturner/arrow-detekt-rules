@@ -5,6 +5,7 @@ internal val PRELUDE =
     import arrow.core.Either
     import arrow.core.Either.Left
     import arrow.core.Either.Right
+    import arrow.core.flatMap
     import arrow.core.left
     import arrow.core.right
     import arrow.core.raise.Raise

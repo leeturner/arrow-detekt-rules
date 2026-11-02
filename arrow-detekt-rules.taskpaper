@@ -18,11 +18,6 @@ NoCatchAllInRaiseScope:
 	Pick it up only if it turns up in real code.
 
 New rules:
-- NoNestedEither rule
-	Flag a declared or inferred `Either<E, Either<...>>`, which usually means a missing `bind()`. A likely bug rather than an idiom.
-	From the idea doc (https://claude.ai/artifact/B1DUsRYvotDnRQd9o25J4s, 2026-10-31), which says to build a rule once a code review finds the same pattern twice.
-	Build it as "Adding a rule" in README.md describes, with a message that says what to write instead. Check declared types and inferred ones (property types, function return types and the Analysis API's `expressionType`), matching `arrow.core.Either` by class id.
-
 Housekeeping:
 - Guard against projects without Arrow
 	`coversRaise` in `NoCatchAllInRaiseScope.kt` builds `arrow.core.raise.RaiseCancellationException` with `buildClassType`, and the rule checks types against `arrow.core.raise.Raise`. We haven't checked what happens in a project without Arrow on its classpath; the tests always have it. If it throws, it fails the consumer's whole detekt run, not just this rule.
@@ -59,3 +54,7 @@ Archive:
 	Flag `.fold({ Left(f(it)) }, { Right(g(it)) })` and suggest `.mapLeft(f).map(g)`.
 	From the idea doc (https://claude.ai/artifact/B1DUsRYvotDnRQd9o25J4s, 2026-10-31), which says to build a rule once a code review finds the same pattern twice.
 	Build it as "Adding a rule" in README.md describes, with a message that says what to write instead. Match `fold` resolving to Arrow's `Either.fold`, with lambdas whose last expression builds a `Left` and a `Right` (including `.left()` and `.right()`).
+- NoNestedEither rule @done(2026-11-02 11:01)
+	Flag a declared or inferred `Either<E, Either<...>>`, which usually means a missing `bind()`. A likely bug rather than an idiom.
+	From the idea doc (https://claude.ai/artifact/B1DUsRYvotDnRQd9o25J4s, 2026-10-31), which says to build a rule once a code review finds the same pattern twice.
+	Build it as "Adding a rule" in README.md describes, with a message that says what to write instead. Check declared types and inferred ones (property types, function return types and the Analysis API's `expressionType`), matching `arrow.core.Either` by class id.
