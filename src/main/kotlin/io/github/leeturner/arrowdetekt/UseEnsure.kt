@@ -20,6 +20,8 @@ import org.jetbrains.kotlin.psi.KtSimpleNameExpression
  * `if (cond) x else raise(e)` when the `if` is a statement, a `val`/`var` initializer or a `return` value, and
  * suggests `ensure` followed by the other branch.
  *
+ * Not when the other branch throws, or the error relies on a smart cast from the `if`, which `ensure`'s lambda loses.
+ *
  * Null checks (`if (x == null) raise(e)`) are left to [UseEnsureNotNull].
  */
 class UseEnsure(config: Config) :

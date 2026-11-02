@@ -114,4 +114,11 @@ class UseEnsureNotNullTest {
 
         assertEquals(0, findings.size)
     }
+
+    @Test
+    fun ignoresWhenElseBranchThrows() {
+        val findings = lint("fun Raise<E>.g(x: String?) { if (x == null) raise(E) else throw IllegalStateException() }")
+
+        assertEquals(0, findings.size)
+    }
 }

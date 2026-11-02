@@ -217,4 +217,41 @@ class UseEnsureTest {
 
         assertEquals("Use ensure(x == null) { E }, then the if branch, instead of if (x == null) … else raise(E).", findings.single().message)
     }
+
+    // inside ensure's lambda, e is still Exception: the smart cast from the condition doesn't reach it
+    @Test
+    fun ignoresErrorThatNeedsTheConditionsSmartCast() {
+        val findings = lint("interface G\nfun Raise<G>.g(e: Exception) { if (e is G) raise(e) }")
+
+        assertEquals(0, findings.size)
+    }
+
+    @Test
+    fun ignoresErrorThatNeedsTheElseBranchsNullSmartCast() {
+        val findings = lint("fun Raise<String>.g(x: String?) { if (x == null) plainCall() else raise(x) }")
+
+        assertEquals(0, findings.size)
+    }
+
+    @Test
+    fun flagsTypeCheckTheErrorDoesNotUse() {
+        val findings = lint("fun Raise<E>.g(x: Any) { if (x is String) raise(E) }")
+
+        assertEquals(1, findings.size)
+    }
+
+    // ensure then a bare throw is a worse read than the two-way split
+    @Test
+    fun ignoresWhenElseBranchThrows() {
+        val findings = lint("fun Raise<E>.g(ok: Boolean) { if (!ok) raise(E) else throw IllegalStateException() }")
+
+        assertEquals(0, findings.size)
+    }
+
+    @Test
+    fun ignoresWhenIfBranchThrows() {
+        val findings = lint("fun Raise<E>.g(ok: Boolean) { if (ok) throw IllegalStateException() else raise(E) }")
+
+        assertEquals(0, findings.size)
+    }
 }
