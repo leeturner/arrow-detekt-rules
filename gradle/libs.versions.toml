@@ -1,0 +1,15 @@
+[versions]
+kotlin = "2.4.21"
+detekt = "2.0.0-alpha.6"
+arrow = "2.3.0.1"
+coroutines = "1.11.0"
+
+[libraries]
+detekt-api = { module = "dev.detekt:detekt-api", version.ref = "detekt" }
+detekt-test = { module = "dev.detekt:detekt-test", version.ref = "detekt" }
+arrow-core = { module = "io.arrow-kt:arrow-core", version.ref = "arrow" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
