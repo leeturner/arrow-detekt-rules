@@ -5,6 +5,8 @@ arrow:
     active: true
   NoNestedEither:
     active: true
+  NoUnboundEither:
+    active: true
   PreferEitherCatch:
     active: true
   UseEnsure:
