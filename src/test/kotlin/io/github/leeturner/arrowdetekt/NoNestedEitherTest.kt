@@ -24,6 +24,14 @@ class NoNestedEitherTest {
         )
     }
 
+    // the README's escape hatch for deliberate nesting
+    @Test
+    fun ignoresSuppressedDeclaration() {
+        val findings = lint("@Suppress(\"NoNestedEither\")\nfun f() = findUser(1).map { findUser(it.length) }")
+
+        assertEquals(0, findings.size)
+    }
+
     @Test
     fun flagsDeclaredFunctionReturnType() {
         val findings = lint("fun f(): Either<E, Either<E, String>> = Either.Right(findUser(1))")

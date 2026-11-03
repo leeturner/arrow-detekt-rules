@@ -88,6 +88,8 @@ val user = findId(name).flatMap { findUser(it) }
 
 `Either.Right<Either<...>>` and type aliases of Either count too. Not flagged: an Either on the left (`Either<Either<E, A>, B>`), an Either inside another type (`Either<E, List<Either<E, A>>>`), and nested Eithers that are never stored in a property or returned from a function, such as a lambda's result passed straight on.
 
+Sometimes the nesting is deliberate, for example to keep an error you cache (`Right(Left(e))`) apart from one you don't (`Left(e)`). Suppress the finding there with `@Suppress("NoNestedEither")`.
+
 ### `NoUnboundEither`
 
 Flags an Either, Option, Ior or Effect used as a statement while a Raise is in scope (inside `either { }`, `option { }`, a `Raise<E>` extension or a `context(_: Raise<E>)` function). The `bind()` is missing, so its error is silently dropped.
@@ -106,7 +108,7 @@ either {
 }
 ```
 
-Statements in nested lambdas (`forEach { findUser(it) }`), local functions and `if`/`when` branches count too, and so does a statement ending in `onLeft { }`, which logs the error but still drops it. Not flagged: values that are bound, stored, returned, passed on or handled (`getOrElse`, `fold`), a peek (`onRight`, `onLeft`, `onSome`, `onNone`) on a variable or parameter that is used again later (`r.onRight { log(it) }; r.bind()`), `kotlin.Result` (`runCatching { cleanup() }` on its own line is usually a deliberate discard), and anything outside a Raise scope. For that last case, see Kotlin's unused return value checker (`-Xreturn-value-checker`).
+Statements in nested lambdas (`forEach { findUser(it) }`), local functions and `if`/`when` branches count too, and so does a statement ending in `onLeft { }`, which logs the error but still drops it, unless the `onLeft` lambda always ends in `raise`, `return` or `throw` (`x.onLeft { raise(it) }`), so the error can't get past it. Not flagged: values that are bound, stored, returned, passed on or handled (`getOrElse`, `fold`), a peek (`onRight`, `onLeft`, `onSome`, `onNone`) on a variable or parameter that is used again later (`r.onRight { log(it) }; r.bind()`), `kotlin.Result` (`runCatching { cleanup() }` on its own line is usually a deliberate discard), and anything outside a Raise scope. For that last case, see Kotlin's unused return value checker (`-Xreturn-value-checker`).
 
 ### `PreferEitherCatch`
 
@@ -131,12 +133,12 @@ Not flagged: a handler that does more than raise or returns a value, a `catch` t
 Flags an `if` whose only statement is Arrow's `raise`, and says what to write instead. It also flags an `if` with an `else` where one branch only raises, when the `if` is a statement (including the last line of a block or lambda), a `val`/`var` initializer or a `return` value. There the fix is `ensure` followed by the other branch.
 
 ```kotlin
-// Flagged: Use ensure(!(amount > limit)) { OverLimit } instead of if (amount > limit) raise(OverLimit).
+// Flagged: Use ensure(amount <= limit) { OverLimit } instead of if (amount > limit) raise(OverLimit).
 either {
     if (amount > limit) raise(OverLimit)
 }
 
-// Flagged: Use ensure(!(id < 0)) { BadId }, then the else branch, instead of if (id < 0) raise(BadId) else ….
+// Flagged: Use ensure(id >= 0) { BadId }, then the else branch, instead of if (id < 0) raise(BadId) else ….
 either {
     val user = if (id < 0) raise(BadId) else load(id)
 }
@@ -150,6 +152,16 @@ either {
 ```
 
 If the `if` block holds a comment explaining the raise, move it above the `ensure` line so it isn't lost.
+
+The suggested condition is negated the simple way where it can be: `if (!ok)` gives `ensure(ok)`, `if (a == b)` gives `ensure(a != b)`, `if (n > 0)` gives `ensure(n <= 0)` (not for a `Double` or `Float`, where `!(a > b)` isn't `a <= b` when either is NaN), and the stdlib's `isEmpty`, `isNotEmpty`, `isBlank`, `isNotBlank`, `any` and `none` swap to their opposite (`if (ids.isEmpty())` gives `ensure(ids.isNotEmpty())`).
+
+An `&&` or `||` condition that would need negating (`if (a && b) raise(e)`) isn't flagged, since `ensure(!(a && b))` reads worse than the `if`. To flag it anyway:
+
+```yaml
+arrow:
+  UseEnsure:
+    reportCompoundConditions: true
+```
 
 Not flagged: an `if` with an `else` anywhere else (a function argument, after `?:`, an expression body), where moving the check above the line isn't a plain rewrite; both branches raising; one branch raising and the other throwing (`if (c) raise(e) else throw x`); an error that relies on a smart cast from the `if` (`if (e is MyError) raise(e)`), which doesn't reach `ensure`'s lambda; a block that does more than raise; a `raise` that isn't Arrow's; and null checks (`if (x == null) raise(e)`, `if (x != null) … else raise(e)`), which `UseEnsureNotNull` covers.
 

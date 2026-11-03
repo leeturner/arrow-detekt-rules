@@ -18,6 +18,6 @@ class ArrowRuleSetProviderTest {
     fun defaultConfigActivatesEveryRule() {
         val yml = javaClass.classLoader.getResource("config/config.yml")?.readText()
 
-        assertEquals("arrow:\n  NoCatchAllInRaiseScope:\n    active: true\n  NoFoldBackIntoEither:\n    active: true\n  NoNestedEither:\n    active: true\n  NoUnboundEither:\n    active: true\n  PreferEitherCatch:\n    active: true\n  UseEnsure:\n    active: true\n  UseEnsureNotNull:\n    active: true\n", yml)
+        assertEquals("arrow:\n  NoCatchAllInRaiseScope:\n    active: true\n  NoFoldBackIntoEither:\n    active: true\n  NoNestedEither:\n    active: true\n  NoUnboundEither:\n    active: true\n  PreferEitherCatch:\n    active: true\n  UseEnsure:\n    active: true\n    reportCompoundConditions: false\n  UseEnsureNotNull:\n    active: true\n", yml)
     }
 }
