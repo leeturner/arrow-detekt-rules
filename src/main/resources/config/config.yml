@@ -11,5 +11,6 @@ arrow:
     active: true
   UseEnsure:
     active: true
+    reportCompoundConditions: false
   UseEnsureNotNull:
     active: true
