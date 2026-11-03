@@ -89,6 +89,44 @@ class NoUnboundEitherTest {
         assertEquals(1, lint("fun f() = either<E, Int> { findUser(1).onLeft { println(it) }; 1 }").size)
     }
 
+    // the onLeft can't fall through, so the Left never gets past it
+    @Test
+    fun ignoresOnLeftThatExits() {
+        val findings = lint(
+            "fun f() = either<String, Unit> { findUser(1).onLeft { raise(\"bad\") }.onRight { println(it) } }\n" +
+                "fun g() = either<E, Int> { findUser(1).onRight { println(it) }.onLeft { return@either 0 }; 1 }\n" +
+                "fun Raise<E>.h() { findUser(1).onLeft { println(it); throw IllegalStateException() } }\n" +
+                "fun Raise<E>.i(o: arrow.core.Option<Int>) { o.onNone { raise(E) } }",
+        )
+
+        assertEquals(0, findings.size)
+    }
+
+    @Test
+    fun flagsOnLeftThatMayFallThrough() {
+        val findings = lint(
+            "fun Raise<E>.g(c: Boolean) { findUser(1).onLeft { if (c) raise(it) }; findUser(1).onRight { raise(E) } }",
+        )
+
+        assertEquals(2, findings.size)
+    }
+
+    // flatMap's own Left isn't the one onLeft saw
+    @Test
+    fun flagsOnLeftThatExitsBeforeAFlatMap() {
+        assertEquals(1, lint("fun Raise<E>.g() { findUser(1).onLeft { raise(it) }.flatMap { findUser(2) } }").size)
+    }
+
+    @Test
+    fun leavesAnnotationsOutOfTheMessage() {
+        val findings = lint("fun Raise<E>.g(n: Int?) {\n    @Suppress(\"x\")\n    findUser(n!!)\n}")
+
+        assertEquals(
+            "The Either from findUser(n!!) is never bound, so its error is dropped. Use findUser(n!!).bind() instead.",
+            findings.single().message,
+        )
+    }
+
     // onRight returns r unchanged, and r is bound afterwards, so nothing is dropped
     @Test
     fun ignoresPeekOnVariableBoundLater() {

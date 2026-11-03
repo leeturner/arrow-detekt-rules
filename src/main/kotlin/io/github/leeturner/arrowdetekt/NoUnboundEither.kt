@@ -14,12 +14,14 @@ import org.jetbrains.kotlin.idea.references.mainReference
 import org.jetbrains.kotlin.analysis.api.types.KaFunctionType
 import org.jetbrains.kotlin.analysis.api.types.KaType
 import org.jetbrains.kotlin.name.ClassId
+import org.jetbrains.kotlin.psi.KtAnnotatedExpression
 import org.jetbrains.kotlin.psi.KtArrayAccessExpression
 import org.jetbrains.kotlin.psi.KtBlockExpression
 import org.jetbrains.kotlin.psi.KtCallExpression
 import org.jetbrains.kotlin.psi.KtContainerNodeForControlStructureBody
 import org.jetbrains.kotlin.psi.KtExpression
 import org.jetbrains.kotlin.psi.KtIfExpression
+import org.jetbrains.kotlin.psi.KtLambdaExpression
 import org.jetbrains.kotlin.psi.KtNameReferenceExpression
 import org.jetbrains.kotlin.psi.KtParenthesizedExpression
 import org.jetbrains.kotlin.psi.KtQualifiedExpression
@@ -44,7 +46,7 @@ class NoUnboundEither(config: Config) :
         val message = analyze(expression) {
             val type = expression.expressionType ?: return@analyze null
             bindableName(type)
-                ?.takeIf { !expression.isUsedAsExpression && !peeksAtValueUsedLater(expression) }
+                ?.takeIf { !expression.isUsedAsExpression && !peeksAtValueUsedLater(expression) && !exitsOnError(expression) }
                 ?.takeIf { expression.containingKtFile.scopeContext(expression).implicitValues.any { it.type.isSubtypeOf(RAISE) } }
                 ?.let { message(it, expression, if (type.isNullable) "?.bind()" else ".bind()") }
         } ?: return
@@ -52,7 +54,9 @@ class NoUnboundEither(config: Config) :
     }
 }
 
-private fun message(type: String, expression: KtExpression, bind: String): String {
+private fun message(type: String, statement: KtExpression, bind: String): String {
+    // `@Suppress("…") x` binds as x.bind(): the annotation stays where it is
+    val expression = generateSequence(statement) { (it as? KtAnnotatedExpression)?.baseExpression }.last()
     val lines = expression.text.lines()
     val start = "The $type from ${lines.first()}${if (lines.size > 1) "…" else ""} is never bound, so its error is dropped."
     // a postfix .bind() on anything else (a ?: b, x as T, l@ x) would bind only its last part
@@ -84,7 +88,28 @@ private fun KaSession.peeksAtValueUsedLater(expression: KtExpression): Boolean {
     }.any { it.mainReference.resolveToSymbol() == symbol }
 }
 
-private fun KaSession.isPeek(call: KtQualifiedExpression): Boolean =
+// `x.onLeft { raise(it) }` can't fall through, so no Left gets past it; peeks after it hand back the same value
+// ponytail: only peeks after it, so `x.onLeft { raise(it) }.map { }` is still reported; follow map too if that turns up
+private fun KaSession.exitsOnError(expression: KtExpression): Boolean {
+    var call = expression
+    while (call is KtQualifiedExpression) {
+        val name = peekName(call)?.takeIf { it in PEEKS } ?: return false
+        if (name in ERROR_PEEKS && lambdaExits(call.selectorExpression as KtCallExpression)) return true
+        call = call.receiverExpression
+    }
+    return false
+}
+
+private fun KaSession.lambdaExits(call: KtCallExpression): Boolean {
+    val lambda = call.valueArguments.lastOrNull()?.getArgumentExpression() as? KtLambdaExpression ?: return false
+    return lambda.bodyExpression?.statements?.lastOrNull()?.expressionType?.isNothingType == true
+}
+
+private val ERROR_PEEKS = setOf("arrow.core.Either.onLeft", "arrow.core.Option.onNone")
+
+private fun KaSession.peekName(call: KtQualifiedExpression): String? =
     (call.selectorExpression as? KtCallExpression)?.resolveToCall()?.successfulFunctionCallOrNull()
-        ?.symbol?.callableId?.asSingleFqName()?.asString() in PEEKS
+        ?.symbol?.callableId?.asSingleFqName()?.asString()
+
+private fun KaSession.isPeek(call: KtQualifiedExpression): Boolean = peekName(call) in PEEKS
 
