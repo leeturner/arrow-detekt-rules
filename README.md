@@ -88,6 +88,8 @@ val user = findId(name).flatMap { findUser(it) }
 
 `Either.Right<Either<...>>` and type aliases of Either count too. Not flagged: an Either on the left (`Either<Either<E, A>, B>`), an Either inside another type (`Either<E, List<Either<E, A>>>`), and nested Eithers that are never stored in a property or returned from a function, such as a lambda's result passed straight on.
 
+Sometimes the nesting is deliberate, for example to keep an error you cache (`Right(Left(e))`) apart from one you don't (`Left(e)`). Suppress the finding there with `@Suppress("NoNestedEither")`.
+
 ### `NoUnboundEither`
 
 Flags an Either, Option, Ior or Effect used as a statement while a Raise is in scope (inside `either { }`, `option { }`, a `Raise<E>` extension or a `context(_: Raise<E>)` function). The `bind()` is missing, so its error is silently dropped.
