@@ -175,12 +175,28 @@ class UseEnsureTest {
         assertEquals("Use ensure(!(a || c)) { E } instead of if ((a || c)) raise(E).", findings.single().message)
     }
 
-    // !(a > b) isn't a <= b when either is NaN, so comparisons stay wrapped
     @Test
-    fun wrapsComparisonInSuggestion() {
-        val findings = lint("fun Raise<E>.g(n: Int) { if (n > 0) raise(E) }")
+    fun flipsComparisonInSuggestion() {
+        val findings = lint(
+            "fun <T : Comparable<T>> Raise<E>.g(n: Int, s: String, a: T, b: T) { " +
+                "if (n > 0) raise(E); if (s <= \"m\") raise(E); if (a < b) raise(E); if (n >= 2L) raise(E) }",
+        )
 
-        assertEquals("Use ensure(!(n > 0)) { E } instead of if (n > 0) raise(E).", findings.single().message)
+        assertEquals(
+            listOf("n <= 0", "s > \"m\"", "a >= b", "n < 2L"),
+            findings.map { it.message.substringAfter("ensure(").substringBefore(") {") },
+        )
+    }
+
+    // !(a > b) isn't a <= b when either is NaN, so comparisons of Double and Float stay wrapped
+    @Test
+    fun wrapsFloatingPointComparisonInSuggestion() {
+        val findings = lint("fun Raise<E>.g(d: Double, f: Float, n: Int) { if (d > 0) raise(E); if (n < f) raise(E) }")
+
+        assertEquals(
+            listOf("!(d > 0)", "!(n < f)"),
+            findings.map { it.message.substringAfter("ensure(").substringBefore(") {") },
+        )
     }
 
     @Test
@@ -226,7 +242,7 @@ class UseEnsureTest {
         val findings = lint("fun Raise<E>.g(n: Int) { val x = if (n < 0) raise(E) else n; println(x) }")
 
         assertEquals(
-            "Use ensure(!(n < 0)) { E }, then the else branch, instead of if (n < 0) raise(E) else ….",
+            "Use ensure(n >= 0) { E }, then the else branch, instead of if (n < 0) raise(E) else ….",
             findings.single().message,
         )
     }

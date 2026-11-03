@@ -63,6 +63,8 @@ private fun negate(parenthesized: KtExpression): String {
             condition.baseExpression?.let { KtPsiUtil.safeDeparenthesize(it).text } ?: "!${condition.text}"
         is KtBinaryExpression if condition.operationToken in FLIPPED ->
             "${condition.left?.text} ${FLIPPED[condition.operationToken]} ${condition.right?.text}"
+        is KtBinaryExpression if condition.operationToken in COMPARISONS && !isFloatingPoint(condition) ->
+            "${condition.left?.text} ${COMPARISONS[condition.operationToken]} ${condition.right?.text}"
         is KtIsExpression -> "${condition.leftHandSide.text} ${if (condition.isNegated) "is" else "!is"} ${condition.typeReference?.text}"
         is KtSimpleNameExpression, is KtCallExpression, is KtQualifiedExpression ->
             "!${condition.text}"
@@ -93,10 +95,20 @@ private val OPPOSITES = mapOf(
 
 private val STDLIB_PACKAGES = setOf("kotlin.collections", "kotlin.text", "kotlin.sequences")
 
-// Operators whose negation is another operator, by definition: `a != b` is `!(a == b)`. Comparisons aren't here,
-// since `!(a > b)` isn't `a <= b` when either is NaN.
+// Operators whose negation is another operator, by definition: `a != b` is `!(a == b)`.
 private val FLIPPED = mapOf(
     KtTokens.EQEQ to "!=", KtTokens.EXCLEQ to "==", KtTokens.EQEQEQ to "!==", KtTokens.EXCLEQEQEQ to "===",
     KtTokens.IN_KEYWORD to "!in", KtTokens.NOT_IN to "in",
 )
 
+// `!(a > b)` is `a <= b`, except for a Double or Float, where both are false when either is NaN
+private val COMPARISONS = mapOf(
+    KtTokens.LT to ">=", KtTokens.GTEQ to "<", KtTokens.GT to "<=", KtTokens.LTEQ to ">",
+)
+
+private fun isFloatingPoint(comparison: KtBinaryExpression): Boolean = analyze(comparison) {
+    listOfNotNull(comparison.left, comparison.right).any { operand ->
+        val type = operand.expressionType?.lowerBoundIfFlexible() ?: return@analyze true
+        type.isDoubleType || type.isFloatType
+    }
+}

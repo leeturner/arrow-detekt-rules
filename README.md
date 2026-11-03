@@ -131,12 +131,12 @@ Not flagged: a handler that does more than raise or returns a value, a `catch` t
 Flags an `if` whose only statement is Arrow's `raise`, and says what to write instead. It also flags an `if` with an `else` where one branch only raises, when the `if` is a statement (including the last line of a block or lambda), a `val`/`var` initializer or a `return` value. There the fix is `ensure` followed by the other branch.
 
 ```kotlin
-// Flagged: Use ensure(!(amount > limit)) { OverLimit } instead of if (amount > limit) raise(OverLimit).
+// Flagged: Use ensure(amount <= limit) { OverLimit } instead of if (amount > limit) raise(OverLimit).
 either {
     if (amount > limit) raise(OverLimit)
 }
 
-// Flagged: Use ensure(!(id < 0)) { BadId }, then the else branch, instead of if (id < 0) raise(BadId) else ….
+// Flagged: Use ensure(id >= 0) { BadId }, then the else branch, instead of if (id < 0) raise(BadId) else ….
 either {
     val user = if (id < 0) raise(BadId) else load(id)
 }
@@ -151,7 +151,7 @@ either {
 
 If the `if` block holds a comment explaining the raise, move it above the `ensure` line so it isn't lost.
 
-The suggested condition is negated the simple way where it can be: `if (!ok)` gives `ensure(ok)`, `if (a == b)` gives `ensure(a != b)`, and the stdlib's `isEmpty`, `isNotEmpty`, `isBlank`, `isNotBlank`, `any` and `none` swap to their opposite (`if (ids.isEmpty())` gives `ensure(ids.isNotEmpty())`).
+The suggested condition is negated the simple way where it can be: `if (!ok)` gives `ensure(ok)`, `if (a == b)` gives `ensure(a != b)`, `if (n > 0)` gives `ensure(n <= 0)` (not for a `Double` or `Float`, where `!(a > b)` isn't `a <= b` when either is NaN), and the stdlib's `isEmpty`, `isNotEmpty`, `isBlank`, `isNotBlank`, `any` and `none` swap to their opposite (`if (ids.isEmpty())` gives `ensure(ids.isNotEmpty())`).
 
 An `&&` or `||` condition that would need negating (`if (a && b) raise(e)`) isn't flagged, since `ensure(!(a && b))` reads worse than the `if`. To flag it anyway:
 
