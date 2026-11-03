@@ -1,5 +1,9 @@
 # arrow-detekt-rules
 
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.leeturner/arrow-detekt-rules)](https://central.sonatype.com/artifact/io.github.leeturner/arrow-detekt-rules)
+[![Build](https://github.com/leeturner/arrow-detekt-rules/actions/workflows/build.yml/badge.svg)](https://github.com/leeturner/arrow-detekt-rules/actions/workflows/build.yml)
+[![Licence](https://img.shields.io/github/license/leeturner/arrow-detekt-rules)](LICENSE)
+
 A [detekt](https://detekt.dev) 2 rule set for [Arrow](https://arrow-kt.io) code.
 
 ## Usage
@@ -8,9 +12,11 @@ Add it to the project's `build.gradle.kts`. It's on Maven Central, so `mavenCent
 
 ```kotlin
 dependencies {
-    detektPlugins("io.github.leeturner:arrow-detekt-rules:0.1.0")
+    detektPlugins("io.github.leeturner:arrow-detekt-rules:<version>")
 }
 ```
+
+The latest `<version>` is on the Maven Central badge above.
 
 The rules need type resolution, so they run in `detektMain` / `detektTest`, not plain `detekt`.
 
@@ -28,9 +34,9 @@ Each release is built for one detekt version, since a rule set built against one
 
 | arrow-detekt-rules | detekt |
 |--------------------|--------|
-| 0.1.0 | 2.0.0-alpha.6 |
+| 0.1.0 – 0.3.0 | 2.0.0-alpha.6 |
 
-0.1.0 is built with Kotlin 2.4.21 for Java 17 and later, and tested against Arrow 2.2 and 2.3.
+These releases are built with Kotlin 2.4.21 for Java 17 and later, and tested against Arrow 2.2 and 2.3.
 
 ## Rules
 
@@ -207,3 +213,7 @@ After changing a rule, run `./gradlew --stop` in that project before re-running 
 To tell whether a call raises into a Raise scope, check the callee's declared receiver type, not the type of the value passed: inside `either { }`, the generic `T.runCatching` receives the Raise but doesn't raise. `raiseReceivers` in `Raise.kt` does this, and every rule that looks at raising calls uses it. To tell whether a Raise is in scope at all, as `NoUnboundEither` does, check `scopeContext(...).implicitValues` instead, which covers receivers, context parameters and nested lambdas. For an `if (...) raise(e)` rule, start from `ifRaise` in the same file, as `UseEnsure` and `UseEnsureNotNull` do; for any other statement that only raises, `raisedError`, as `PreferEitherCatch` does.
 
 The detekt 2 docs have no complete type-resolution rule example, so `NoCatchAllInRaiseScope` is the working reference. See also detekt's [type resolution docs](https://detekt.dev/docs/gettingstarted/type-resolution) and [`RequiresAnalysisApi`](https://detekt.dev/kdoc/detekt-api/dev.detekt.api/-requires-analysis-api/index.html).
+
+## Licence
+
+Apache License 2.0. See [LICENSE](LICENSE).
